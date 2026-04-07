@@ -5,7 +5,6 @@ from typing import Any, Dict
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
 from routes import admin, bookings, consultants, whatsapp
@@ -66,13 +65,6 @@ app.include_router(consultants.router)
 app.include_router(admin.router)
 
 # ---------------------------------------------------------------------------
-# Frontend – serve the admin dashboard SPA
-# ---------------------------------------------------------------------------
-
-app.mount("/ui", StaticFiles(directory="frontend", html=True), name="frontend")
-
-
-# ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
 
@@ -84,7 +76,7 @@ async def health_check() -> Dict[str, Any]:
         "status": "healthy",
         "app": settings.app_name,
         "version": settings.app_version,
-        "dashboard": "/ui/",
+        "dashboard": "http://localhost:3000",
     }
 
 

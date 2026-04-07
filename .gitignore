@@ -29,6 +29,9 @@ env/
 credentials/
 *.json
 !.env.example
+!dashboard/package.json
+!dashboard/package-lock.json
+!dashboard/tsconfig.json
 
 # Docker
 .dockerignore
@@ -40,3 +43,8 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Next.js dashboard
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.env.local

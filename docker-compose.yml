@@ -21,6 +21,20 @@ services:
       # Mount credentials file if using file-based Google credentials
       - ./credentials:/app/credentials:ro
 
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: ai-booking-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://app:8000
+    depends_on:
+      - app
+
 networks:
   default:
     name: ai-booking-network
+
