@@ -13,7 +13,7 @@ An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Goo
 - 🌍 **Multi-language** – Auto-detect and respond in the user's language
 - 👥 **Multi-consultant** – Support multiple consultants with individual calendars
 - 🔧 **Admin API** – Manage consultants, availability, and view statistics
-- 🖥️ **Web Dashboard** – Single-page admin UI at `/ui/`
+- 🖥️ **Web Dashboard** – Next.js + shadcn/ui admin dashboard (standalone, port 3000)
 
 ## Project Structure
 
@@ -28,8 +28,13 @@ ai-booking/
 ├── docker-compose.yml            # Multi-service Docker setup
 ├── .env.example                  # Environment variables template
 │
-├── frontend/
-│   └── index.html                # Admin dashboard SPA (Tailwind CSS + Alpine.js)
+├── dashboard/                    # Next.js 14 + shadcn/ui admin dashboard (standalone, port 3000)
+│   ├── src/app/                  # App Router pages (dashboard, bookings, consultants, users)
+│   ├── src/components/           # Shared UI components (sidebar, shadcn/ui)
+│   ├── src/lib/                  # API client, types, utilities
+│   ├── Dockerfile                # Multi-stage production build
+│   ├── .env.local.example        # Dashboard environment template
+│   └── package.json
 │
 ├── services/
 │   ├── whatsapp_service.py       # Meta WhatsApp Business API integration
@@ -141,14 +146,27 @@ docker-compose up --build
 
 ### 4. Run locally
 
+**FastAPI backend:**
+
 ```bash
 pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`.  
-Interactive docs at `http://localhost:8000/docs`.  
-**Admin dashboard** at `http://localhost:8000/ui/`.
+Interactive docs at `http://localhost:8000/docs`.
+
+**Next.js dashboard (separate terminal):**
+
+```bash
+cd dashboard
+npm install
+cp .env.local.example .env.local   # points to http://localhost:8000 by default
+npm run dev
+```
+
+The admin dashboard will be available at `http://localhost:3000`.  
+See [`dashboard/README.md`](dashboard/README.md) for full dashboard documentation.
 
 ## WhatsApp Webhook Setup
 
@@ -173,7 +191,6 @@ Interactive docs at `http://localhost:8000/docs`.
 | GET | `/admin/stats` | Booking statistics |
 | GET | `/admin/users` | List all users |
 | GET | `/admin/bookings/all` | All bookings (admin) |
-| GET | `/ui/` | Web admin dashboard |
 
 ## Environment Variables
 
