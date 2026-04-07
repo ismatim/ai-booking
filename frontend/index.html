@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Booking – Admin Dashboard</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Alpine.js via CDN -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f0fdf4', 100: '#dcfce7', 600: '#16a34a', 700: '#15803d', 800: '#166534' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    .fade-in { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800 min-h-screen" x-data="app()" x-init="init()">
+
+  <!-- ─── Toast ─────────────────────────────────────────────────── -->
+  <div x-cloak x-show="toast.visible" x-transition
+       :class="toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'"
+       class="fixed top-4 right-4 z-50 text-white text-sm px-5 py-3 rounded-lg shadow-lg max-w-xs"
+       x-text="toast.message">
+  </div>
+
+  <!-- ─── Layout ────────────────────────────────────────────────── -->
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-56 bg-gray-900 text-gray-100 flex flex-col shrink-0">
+      <div class="px-6 py-5 border-b border-gray-700">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">🤖</span>
+          <div>
+            <p class="font-bold text-white leading-tight">AI Booking</p>
+            <p class="text-xs text-gray-400">Admin Dashboard</p>
+          </div>
+        </div>
+      </div>
+
+      <nav class="flex-1 px-3 py-4 space-y-1">
+        <template x-for="item in navItems" :key="item.id">
+          <button
+            @click="page = item.id; loadPage(item.id)"
+            :class="page === item.id
+              ? 'bg-brand-700 text-white'
+              : 'text-gray-300 hover:bg-gray-700 hover:text-white'"
+            class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+            <span x-text="item.icon" class="text-lg w-6 text-center"></span>
+            <span x-text="item.label"></span>
+          </button>
+        </template>
+      </nav>
+
+      <div class="px-4 py-3 border-t border-gray-700 text-xs text-gray-500 text-center">
+        API: <a href="/docs" target="_blank" class="text-brand-100 hover:underline">/docs</a>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 overflow-auto">
+
+      <!-- Header -->
+      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+        <h1 class="text-xl font-semibold text-gray-800" x-text="navItems.find(n=>n.id===page)?.label || 'Dashboard'"></h1>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-gray-400">Last refreshed: <span x-text="lastRefresh"></span></span>
+          <button @click="loadPage(page)" class="text-sm bg-brand-600 hover:bg-brand-700 text-white px-3 py-1.5 rounded-md transition-colors">
+            ↻ Refresh
+          </button>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <div class="p-8">
+
+        <!-- ── Dashboard ──────────────────────────────────────── -->
+        <section x-show="page === 'dashboard'" x-cloak class="fade-in space-y-6">
+
+          <!-- Stat cards -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <template x-for="card in statCards" :key="card.label">
+              <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide" x-text="card.label"></p>
+                <p class="mt-1 text-3xl font-bold" :class="card.color" x-text="card.value ?? '–'"></p>
+              </div>
+            </template>
+          </div>
+
+          <!-- Recent bookings -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100">
+            <div class="px-6 py-4 border-b border-gray-100">
+              <h2 class="font-semibold text-gray-700">Recent Bookings</h2>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th class="px-4 py-3 text-left">ID</th>
+                    <th class="px-4 py-3 text-left">User</th>
+                    <th class="px-4 py-3 text-left">Consultant</th>
+                    <th class="px-4 py-3 text-left">Date / Time</th>
+                    <th class="px-4 py-3 text-left">Service</th>
+                    <th class="px-4 py-3 text-left">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <template x-if="recentBookings.length === 0">
+                    <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400">No bookings yet.</td></tr>
+                  </template>
+                  <template x-for="b in recentBookings" :key="b.id">
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-4 py-3 font-mono text-xs text-gray-400" x-text="b.id.slice(0,8)+'…'"></td>
+                      <td class="px-4 py-3" x-text="userName(b.user_id)"></td>
+                      <td class="px-4 py-3" x-text="consultantName(b.consultant_id)"></td>
+                      <td class="px-4 py-3 text-xs" x-text="fmtDt(b.start_time)"></td>
+                      <td class="px-4 py-3" x-text="b.service || '—'"></td>
+                      <td class="px-4 py-3"><span :class="statusClass(b.status)" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="b.status"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Bookings ───────────────────────────────────────── -->
+        <section x-show="page === 'bookings'" x-cloak class="fade-in space-y-4">
+
+          <!-- Toolbar -->
+          <div class="flex flex-wrap items-center gap-3">
+            <select x-model="bookingFilter" @change="filterBookings()"
+                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none">
+              <option value="">All statuses</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="rescheduled">Rescheduled</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="completed">Completed</option>
+            </select>
+            <input x-model="bookingSearch" @input="filterBookings()" type="text"
+                   placeholder="Search by ID or service…"
+                   class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-64 focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+            <span class="ml-auto text-sm text-gray-500" x-text="filteredBookings.length + ' result(s)'"></span>
+          </div>
+
+          <!-- Table -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th class="px-4 py-3 text-left">ID</th>
+                  <th class="px-4 py-3 text-left">User</th>
+                  <th class="px-4 py-3 text-left">Consultant</th>
+                  <th class="px-4 py-3 text-left">Start</th>
+                  <th class="px-4 py-3 text-left">End</th>
+                  <th class="px-4 py-3 text-left">Service</th>
+                  <th class="px-4 py-3 text-left">Status</th>
+                  <th class="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <template x-if="filteredBookings.length === 0">
+                  <tr><td colspan="8" class="px-4 py-6 text-center text-gray-400">No bookings found.</td></tr>
+                </template>
+                <template x-for="b in filteredBookings" :key="b.id">
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-mono text-xs text-gray-400" x-text="b.id.slice(0,8)+'…'"></td>
+                    <td class="px-4 py-3 text-xs" x-text="userName(b.user_id)"></td>
+                    <td class="px-4 py-3 text-xs" x-text="consultantName(b.consultant_id)"></td>
+                    <td class="px-4 py-3 text-xs" x-text="fmtDt(b.start_time)"></td>
+                    <td class="px-4 py-3 text-xs" x-text="fmtDt(b.end_time)"></td>
+                    <td class="px-4 py-3" x-text="b.service || '—'"></td>
+                    <td class="px-4 py-3"><span :class="statusClass(b.status)" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="b.status"></span></td>
+                    <td class="px-4 py-3">
+                      <button x-show="b.status !== 'cancelled' && b.status !== 'completed'"
+                              @click="cancelBooking(b.id)"
+                              class="text-xs text-red-600 hover:text-red-800 font-medium transition-colors">
+                        Cancel
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ── Consultants ────────────────────────────────────── -->
+        <section x-show="page === 'consultants'" x-cloak class="fade-in space-y-4">
+
+          <div class="flex justify-end">
+            <button @click="openConsultantModal(null)"
+                    class="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg transition-colors">
+              + Add Consultant
+            </button>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th class="px-4 py-3 text-left">Name</th>
+                  <th class="px-4 py-3 text-left">Email</th>
+                  <th class="px-4 py-3 text-left">Rate ($/hr)</th>
+                  <th class="px-4 py-3 text-left">Services</th>
+                  <th class="px-4 py-3 text-left">Calendar ID</th>
+                  <th class="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <template x-if="consultants.length === 0">
+                  <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400">No consultants yet.</td></tr>
+                </template>
+                <template x-for="c in consultants" :key="c.id">
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium" x-text="c.name"></td>
+                    <td class="px-4 py-3 text-gray-600" x-text="c.email"></td>
+                    <td class="px-4 py-3" x-text="c.rate ? '$' + c.rate : '—'"></td>
+                    <td class="px-4 py-3 text-xs text-gray-500" x-text="(c.services||[]).join(', ') || '—'"></td>
+                    <td class="px-4 py-3 font-mono text-xs text-gray-400 max-w-[12rem] truncate" x-text="c.calendar_id || '—'"></td>
+                    <td class="px-4 py-3 flex gap-3">
+                      <button @click="openConsultantModal(c)" class="text-xs text-brand-600 hover:text-brand-800 font-medium">Edit</button>
+                      <button @click="deleteConsultant(c.id)" class="text-xs text-red-600 hover:text-red-800 font-medium">Delete</button>
+                      <button @click="openAvailability(c)" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Availability</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Availability panel -->
+          <div x-show="selectedConsultant" x-cloak class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold text-gray-700">
+                Availability – <span x-text="selectedConsultant?.name"></span>
+              </h3>
+              <button @click="selectedConsultant = null" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+
+            <!-- Existing slots -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th class="px-3 py-2 text-left">Day</th>
+                    <th class="px-3 py-2 text-left">Start</th>
+                    <th class="px-3 py-2 text-left">End</th>
+                    <th class="px-3 py-2 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <template x-if="availability.length === 0">
+                    <tr><td colspan="4" class="px-3 py-4 text-center text-gray-400">No availability set.</td></tr>
+                  </template>
+                  <template x-for="av in availability" :key="av.id">
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-3 py-2" x-text="dayNames[av.day_of_week]"></td>
+                      <td class="px-3 py-2" x-text="av.start_time"></td>
+                      <td class="px-3 py-2" x-text="av.end_time"></td>
+                      <td class="px-3 py-2">
+                        <button @click="deleteAvailability(av.id)" class="text-xs text-red-600 hover:text-red-800 font-medium">Remove</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Add slot form -->
+            <form @submit.prevent="addAvailability()" class="flex flex-wrap gap-3 items-end border-t pt-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Day</label>
+                <select x-model.number="newSlot.day_of_week" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none">
+                  <template x-for="(d, i) in dayNames" :key="i">
+                    <option :value="i" x-text="d"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Start time</label>
+                <input x-model="newSlot.start_time" type="time" required
+                       class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">End time</label>
+                <input x-model="newSlot.end_time" type="time" required
+                       class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+              </div>
+              <button type="submit" class="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg transition-colors self-end">
+                Add Slot
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ── Users ──────────────────────────────────────────── -->
+        <section x-show="page === 'users'" x-cloak class="fade-in">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th class="px-4 py-3 text-left">Name</th>
+                  <th class="px-4 py-3 text-left">Phone</th>
+                  <th class="px-4 py-3 text-left">Language</th>
+                  <th class="px-4 py-3 text-left">Created</th>
+                  <th class="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <template x-if="users.length === 0">
+                  <tr><td colspan="5" class="px-4 py-6 text-center text-gray-400">No users yet.</td></tr>
+                </template>
+                <template x-for="u in users" :key="u.id">
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium" x-text="u.name || '—'"></td>
+                    <td class="px-4 py-3 font-mono text-xs">••••<span x-text="u.phone_number.slice(-4)"></span></td>
+                    <td class="px-4 py-3 uppercase text-xs text-gray-500" x-text="u.language || 'en'"></td>
+                    <td class="px-4 py-3 text-xs text-gray-500" x-text="fmtDt(u.created_at)"></td>
+                    <td class="px-4 py-3">
+                      <button @click="clearConversation(u.id)"
+                              class="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors">
+                        Clear chat history
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div><!-- /content -->
+    </main>
+  </div>
+
+  <!-- ─── Consultant Modal ───────────────────────────────────────── -->
+  <div x-cloak x-show="consultantModal.open"
+       class="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4"
+       @click.self="consultantModal.open = false">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 fade-in">
+      <h2 class="text-lg font-semibold text-gray-800"
+          x-text="consultantModal.isEdit ? 'Edit Consultant' : 'Add Consultant'"></h2>
+
+      <form @submit.prevent="saveConsultant()" class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+            <input x-model="consultantForm.name" type="text" required
+                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+            <input x-model="consultantForm.email" type="email" required
+                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Rate ($/hr)</label>
+            <input x-model.number="consultantForm.rate" type="number" min="0" step="0.01"
+                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Calendar ID</label>
+            <input x-model="consultantForm.calendar_id" type="text" placeholder="user@domain.com"
+                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Services (comma-separated)</label>
+          <input x-model="consultantForm.servicesRaw" type="text" placeholder="Coaching, Consulting, Review"
+                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Bio</label>
+          <textarea x-model="consultantForm.bio" rows="2"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-none"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="consultantModal.open = false"
+                  class="text-sm px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button type="submit"
+                  class="text-sm bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg transition-colors">
+            <span x-text="consultantModal.isEdit ? 'Save Changes' : 'Add Consultant'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── Confirm Dialog ─────────────────────────────────────────── -->
+  <div x-cloak x-show="confirm.open"
+       class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4 fade-in text-center">
+      <p class="text-lg font-semibold text-gray-800" x-text="confirm.title"></p>
+      <p class="text-sm text-gray-500" x-text="confirm.message"></p>
+      <div class="flex justify-center gap-3 pt-2">
+        <button @click="confirm.open = false"
+                class="text-sm px-5 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          Cancel
+        </button>
+        <button @click="confirm.resolve(true); confirm.open = false"
+                class="text-sm bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg transition-colors">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Application Script ─────────────────────────────────────── -->
+  <script>
+    function app() {
+      return {
+        // Navigation
+        page: 'dashboard',
+        navItems: [
+          { id: 'dashboard',   label: 'Dashboard',   icon: '📊' },
+          { id: 'bookings',    label: 'Bookings',    icon: '📅' },
+          { id: 'consultants', label: 'Consultants', icon: '👤' },
+          { id: 'users',       label: 'Users',       icon: '👥' },
+        ],
+        lastRefresh: '—',
+
+        // Data
+        stats: {},
+        allBookings: [],
+        recentBookings: [],
+        filteredBookings: [],
+        consultants: [],
+        users: [],
+        availability: [],
+
+        // State
+        bookingFilter: '',
+        bookingSearch: '',
+        selectedConsultant: null,
+        newSlot: { day_of_week: 0, start_time: '09:00', end_time: '17:00' },
+        dayNames: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+
+        // Stat cards config
+        get statCards() {
+          const byStatus = this.stats.by_status || {};
+          return [
+            { label: 'Total Bookings',    value: this.stats.total,                       color: 'text-gray-800' },
+            { label: 'Confirmed',         value: byStatus.confirmed   ?? 0,              color: 'text-green-600' },
+            { label: 'Cancelled',         value: byStatus.cancelled   ?? 0,              color: 'text-red-500' },
+            { label: 'Pending / Resched', value: (byStatus.pending ?? 0) + (byStatus.rescheduled ?? 0), color: 'text-yellow-600' },
+          ];
+        },
+
+        // Consultant modal
+        consultantModal: { open: false, isEdit: false, editId: null },
+        consultantForm: { name: '', email: '', rate: '', calendar_id: '', servicesRaw: '', bio: '' },
+
+        // Confirm dialog
+        confirm: { open: false, title: '', message: '', resolve: null },
+
+        // Toast
+        toast: { visible: false, message: '', type: 'success', _timer: null },
+
+        // ─── Init ────────────────────────────────────────────────
+        async init() {
+          await this.loadPage('dashboard');
+        },
+
+        async loadPage(id) {
+          this.lastRefresh = new Date().toLocaleTimeString();
+          if (id === 'dashboard') await Promise.all([this.fetchStats(), this.fetchAllBookings(), this.fetchConsultants(), this.fetchUsers()]);
+          if (id === 'bookings')  await Promise.all([this.fetchAllBookings(), this.fetchConsultants(), this.fetchUsers()]);
+          if (id === 'consultants') await this.fetchConsultants();
+          if (id === 'users')     await this.fetchUsers();
+        },
+
+        // ─── API helpers ─────────────────────────────────────────
+        async apiFetch(url, opts = {}) {
+          const base = window.location.origin;
+          const res = await fetch(base + url, {
+            headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+            ...opts,
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            throw new Error(err.detail || 'Request failed');
+          }
+          return res.json();
+        },
+
+        // ─── Data fetchers ───────────────────────────────────────
+        async fetchStats() {
+          try {
+            const r = await this.apiFetch('/admin/stats');
+            this.stats = r.data || {};
+          } catch (e) { this.showToast('Failed to load stats: ' + e.message, 'error'); }
+        },
+
+        async fetchAllBookings() {
+          try {
+            const r = await this.apiFetch('/admin/bookings/all');
+            this.allBookings = r.data || [];
+            this.recentBookings = this.allBookings.slice(0, 8);
+            this.filterBookings();
+          } catch (e) { this.showToast('Failed to load bookings: ' + e.message, 'error'); }
+        },
+
+        async fetchConsultants() {
+          try {
+            const r = await this.apiFetch('/consultants');
+            this.consultants = r.data || [];
+          } catch (e) { this.showToast('Failed to load consultants: ' + e.message, 'error'); }
+        },
+
+        async fetchUsers() {
+          try {
+            const r = await this.apiFetch('/admin/users');
+            this.users = r.data || [];
+          } catch (e) { this.showToast('Failed to load users: ' + e.message, 'error'); }
+        },
+
+        async fetchAvailability(consultantId) {
+          try {
+            const r = await this.apiFetch(`/consultants/${consultantId}/availability`);
+            this.availability = r.data || [];
+          } catch (e) { this.showToast('Failed to load availability: ' + e.message, 'error'); }
+        },
+
+        // ─── Booking actions ─────────────────────────────────────
+        filterBookings() {
+          let list = this.allBookings;
+          if (this.bookingFilter) list = list.filter(b => b.status === this.bookingFilter);
+          if (this.bookingSearch.trim()) {
+            const q = this.bookingSearch.toLowerCase();
+            list = list.filter(b => b.id.includes(q) || (b.service||'').toLowerCase().includes(q));
+          }
+          this.filteredBookings = list;
+        },
+
+        async cancelBooking(id) {
+          const ok = await this.askConfirm('Cancel booking?', 'This action cannot be undone.');
+          if (!ok) return;
+          try {
+            await this.apiFetch(`/bookings/${id}/cancel`, { method: 'POST' });
+            this.showToast('Booking cancelled');
+            await this.fetchAllBookings();
+            await this.fetchStats();
+          } catch (e) { this.showToast('Failed to cancel: ' + e.message, 'error'); }
+        },
+
+        // ─── Consultant CRUD ──────────────────────────────────────
+        openConsultantModal(c) {
+          if (c) {
+            this.consultantForm = {
+              name: c.name,
+              email: c.email,
+              rate: c.rate || '',
+              calendar_id: c.calendar_id || '',
+              servicesRaw: (c.services || []).join(', '),
+              bio: c.bio || '',
+            };
+            this.consultantModal = { open: true, isEdit: true, editId: c.id };
+          } else {
+            this.consultantForm = { name: '', email: '', rate: '', calendar_id: '', servicesRaw: '', bio: '' };
+            this.consultantModal = { open: true, isEdit: false, editId: null };
+          }
+        },
+
+        async saveConsultant() {
+          const payload = {
+            name: this.consultantForm.name,
+            email: this.consultantForm.email,
+            rate: this.consultantForm.rate || null,
+            calendar_id: this.consultantForm.calendar_id || null,
+            services: this.consultantForm.servicesRaw
+              ? this.consultantForm.servicesRaw.split(',').map(s => s.trim()).filter(Boolean)
+              : null,
+            bio: this.consultantForm.bio || null,
+          };
+          try {
+            if (this.consultantModal.isEdit) {
+              await this.apiFetch(`/consultants/${this.consultantModal.editId}`, {
+                method: 'PUT', body: JSON.stringify(payload),
+              });
+              this.showToast('Consultant updated');
+            } else {
+              await this.apiFetch('/consultants', { method: 'POST', body: JSON.stringify(payload) });
+              this.showToast('Consultant added');
+            }
+            this.consultantModal.open = false;
+            await this.fetchConsultants();
+          } catch (e) { this.showToast('Failed to save: ' + e.message, 'error'); }
+        },
+
+        async deleteConsultant(id) {
+          const ok = await this.askConfirm('Delete consultant?', 'This will remove the consultant and all their data.');
+          if (!ok) return;
+          try {
+            await this.apiFetch(`/consultants/${id}`, { method: 'DELETE' });
+            this.showToast('Consultant deleted');
+            if (this.selectedConsultant?.id === id) this.selectedConsultant = null;
+            await this.fetchConsultants();
+          } catch (e) { this.showToast('Failed to delete: ' + e.message, 'error'); }
+        },
+
+        // ─── Availability ─────────────────────────────────────────
+        async openAvailability(c) {
+          this.selectedConsultant = c;
+          await this.fetchAvailability(c.id);
+        },
+
+        async addAvailability() {
+          if (!this.selectedConsultant) return;
+          const payload = {
+            consultant_id: this.selectedConsultant.id,
+            day_of_week: this.newSlot.day_of_week,
+            start_time: this.newSlot.start_time,
+            end_time: this.newSlot.end_time,
+          };
+          try {
+            await this.apiFetch(`/consultants/${this.selectedConsultant.id}/availability`, {
+              method: 'POST', body: JSON.stringify(payload),
+            });
+            this.showToast('Availability slot added');
+            await this.fetchAvailability(this.selectedConsultant.id);
+          } catch (e) { this.showToast('Failed to add slot: ' + e.message, 'error'); }
+        },
+
+        async deleteAvailability(avId) {
+          try {
+            await this.apiFetch(`/consultants/availability/${avId}`, { method: 'DELETE' });
+            this.showToast('Slot removed');
+            await this.fetchAvailability(this.selectedConsultant.id);
+          } catch (e) { this.showToast('Failed to remove: ' + e.message, 'error'); }
+        },
+
+        // ─── Users ────────────────────────────────────────────────
+        async clearConversation(userId) {
+          const ok = await this.askConfirm('Clear conversation history?', 'The user\'s entire chat history will be erased.');
+          if (!ok) return;
+          try {
+            await this.apiFetch(`/admin/users/${userId}/conversation`, { method: 'DELETE' });
+            this.showToast('Conversation history cleared');
+          } catch (e) { this.showToast('Failed to clear: ' + e.message, 'error'); }
+        },
+
+        // ─── Helpers ─────────────────────────────────────────────
+        userName(userId) {
+          const u = this.users.find(u => u.id === userId);
+          return u ? (u.name || '••••' + u.phone_number.slice(-4)) : userId?.slice(0, 8) + '…';
+        },
+
+        consultantName(cId) {
+          const c = this.consultants.find(c => c.id === cId);
+          return c ? c.name : cId?.slice(0, 8) + '…';
+        },
+
+        fmtDt(iso) {
+          if (!iso) return '—';
+          const d = new Date(iso);
+          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+               + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        },
+
+        statusClass(status) {
+          return {
+            confirmed:   'bg-green-100 text-green-700',
+            pending:     'bg-yellow-100 text-yellow-700',
+            cancelled:   'bg-red-100 text-red-700',
+            completed:   'bg-blue-100 text-blue-700',
+            rescheduled: 'bg-purple-100 text-purple-700',
+          }[status] || 'bg-gray-100 text-gray-600';
+        },
+
+        showToast(message, type = 'success') {
+          clearTimeout(this.toast._timer);
+          this.toast = { visible: true, message, type, _timer: null };
+          this.toast._timer = setTimeout(() => { this.toast.visible = false; }, 3500);
+        },
+
+        askConfirm(title, message) {
+          return new Promise(resolve => {
+            this.confirm = { open: true, title, message, resolve };
+          });
+        },
+      };
+    }
+  </script>
+</body>
+</html>

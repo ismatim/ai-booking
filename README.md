@@ -13,6 +13,7 @@ An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Goo
 - 🌍 **Multi-language** – Auto-detect and respond in the user's language
 - 👥 **Multi-consultant** – Support multiple consultants with individual calendars
 - 🔧 **Admin API** – Manage consultants, availability, and view statistics
+- 🖥️ **Web Dashboard** – Single-page admin UI at `/ui/`
 
 ## Project Structure
 
@@ -26,6 +27,9 @@ ai-booking/
 ├── Dockerfile                    # Container configuration
 ├── docker-compose.yml            # Multi-service Docker setup
 ├── .env.example                  # Environment variables template
+│
+├── frontend/
+│   └── index.html                # Admin dashboard SPA (Tailwind CSS + Alpine.js)
 │
 ├── services/
 │   ├── whatsapp_service.py       # Meta WhatsApp Business API integration
@@ -143,7 +147,8 @@ uvicorn main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`.  
-Interactive docs at `http://localhost:8000/docs`.
+Interactive docs at `http://localhost:8000/docs`.  
+**Admin dashboard** at `http://localhost:8000/ui/`.
 
 ## WhatsApp Webhook Setup
 
@@ -168,6 +173,7 @@ Interactive docs at `http://localhost:8000/docs`.
 | GET | `/admin/stats` | Booking statistics |
 | GET | `/admin/users` | List all users |
 | GET | `/admin/bookings/all` | All bookings (admin) |
+| GET | `/ui/` | Web admin dashboard |
 
 ## Environment Variables
 

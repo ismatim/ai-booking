@@ -109,15 +109,12 @@ class ReminderService:
         )
 
         phone = user["phone_number"]
-        # Redact phone number in logs: show only last 4 digits
-        phone_masked = "***" + phone[-4:] if len(phone) >= 4 else "***"
         try:
             await self.whatsapp.send_text_message(to=phone, body=message)
             logger.info(
-                "Sent %s reminder for booking %s to %s",
+                "Sent %s reminder for booking %s",
                 label,
                 booking["id"],
-                phone_masked,
             )
         except Exception as exc:
             logger.error(
