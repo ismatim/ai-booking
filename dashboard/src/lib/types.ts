@@ -9,8 +9,9 @@ export interface Booking {
   id: string;
   user_id: string;
   consultant_id: string;
-  service_type: string;
-  scheduled_at: string;
+  service: string | null;
+  start_time: string;
+  end_time: string;
   status: "pending" | "confirmed" | "cancelled";
   notes?: string;
   created_at: string;

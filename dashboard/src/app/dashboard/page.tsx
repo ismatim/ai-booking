@@ -102,11 +102,11 @@ export default async function DashboardPage() {
                 recent.map((booking) => (
                   <TableRow key={booking.id}>
                     <TableCell className="font-mono text-xs">{booking.id.slice(0, 8)}…</TableCell>
-                    <TableCell>{booking.service_type}</TableCell>
+                    <TableCell>{booking.service ?? "—"}</TableCell>
                     <TableCell>
                       <StatusBadge status={booking.status} />
                     </TableCell>
-                    <TableCell>{new Date(booking.scheduled_at).toLocaleString()}</TableCell>
+                    <TableCell>{new Date(booking.start_time).toLocaleString()}</TableCell>
                     <TableCell>{new Date(booking.created_at).toLocaleString()}</TableCell>
                   </TableRow>
                 ))

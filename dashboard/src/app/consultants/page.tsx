@@ -52,8 +52,10 @@ export default function ConsultantsPage() {
   const fetchConsultants = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Consultant[]>("/consultants");
-      setConsultants(data);
+      const res = await apiFetch<{ success: boolean; count: number; data: Consultant[] }>(
+        "/consultants"
+      );
+      setConsultants(res.data);
     } catch (err) {
       console.error("Failed to fetch consultants:", err);
     } finally {

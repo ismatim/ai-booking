@@ -74,7 +74,7 @@ export default function BookingsPage() {
     const matchesSearch =
       search === "" ||
       b.id.toLowerCase().includes(search.toLowerCase()) ||
-      b.service_type.toLowerCase().includes(search.toLowerCase());
+      (b.service ?? "").toLowerCase().includes(search.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
@@ -134,11 +134,11 @@ export default function BookingsPage() {
                 filtered.map((booking) => (
                   <TableRow key={booking.id}>
                     <TableCell className="font-mono text-xs">{booking.id.slice(0, 8)}…</TableCell>
-                    <TableCell>{booking.service_type}</TableCell>
+                    <TableCell>{booking.service ?? "—"}</TableCell>
                     <TableCell>
                       <StatusBadge status={booking.status} />
                     </TableCell>
-                    <TableCell>{new Date(booking.scheduled_at).toLocaleString()}</TableCell>
+                    <TableCell>{new Date(booking.start_time).toLocaleString()}</TableCell>
                     <TableCell>
                       {booking.status !== "cancelled" && (
                         <Button
