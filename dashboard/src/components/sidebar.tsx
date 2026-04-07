@@ -17,6 +17,9 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
 
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(href + "/");
+
   return (
     <aside className="flex flex-col w-56 shrink-0 border-r bg-background min-h-screen">
       <div className="p-4">
@@ -29,11 +32,8 @@ export function Sidebar() {
         {navItems.map(({ href, label, icon: Icon }) => (
           <Button
             key={href}
-            variant={pathname === href || pathname.startsWith(href + "/") ? "secondary" : "ghost"}
-            className={cn(
-              "w-full justify-start gap-2",
-              (pathname === href || pathname.startsWith(href + "/")) && "font-semibold"
-            )}
+            variant={isActive(href) ? "secondary" : "ghost"}
+            className={cn("w-full justify-start gap-2", isActive(href) && "font-semibold")}
             asChild
           >
             <Link href={href}>
