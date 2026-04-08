@@ -28,10 +28,17 @@ class Settings(BaseSettings):
     # Supabase
     supabase_url: str
     supabase_key: str
+    supabase_password: str
 
     # Google Calendar
     google_calendar_credentials: Optional[str] = None  # JSON string or file path
     google_calendar_token: Optional[str] = None  # JSON string for OAuth token
+
+    # Twilio Service
+    # Recovery: PF4MSAK33S7BSZ9GTDGQRT3H
+    twilio_account_sid: str
+    twilio_auth_token: str
+    twilio_whatsapp_number: str
 
     # Scheduler
     reminder_check_interval_minutes: int = 5

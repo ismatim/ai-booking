@@ -13,14 +13,16 @@ logger = get_logger(__name__)
 WHATSAPP_API_BASE = "https://graph.facebook.com"
 
 
-class WhatsAppService:
+class MetaService:
     """Handles sending messages through the Meta WhatsApp Business API."""
 
     def __init__(self) -> None:
         self.phone_number_id = settings.whatsapp_phone_number_id
         self.token = settings.whatsapp_token
         self.api_version = settings.whatsapp_api_version
-        self.base_url = f"{WHATSAPP_API_BASE}/{self.api_version}/{self.phone_number_id}/messages"
+        self.base_url = (
+            f"{WHATSAPP_API_BASE}/{self.api_version}/{self.phone_number_id}/messages"
+        )
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -178,7 +180,9 @@ class WhatsAppService:
             httpx.HTTPStatusError: If the API returns a non-2xx status.
         """
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(self.base_url, json=payload, headers=self.headers)
+            response = await client.post(
+                self.base_url, json=payload, headers=self.headers
+            )
             response.raise_for_status()
             logger.debug("WhatsApp API response: %s", response.text)
             return response.json()

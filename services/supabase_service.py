@@ -29,7 +29,9 @@ class SupabaseService:
     # Users
     # ------------------------------------------------------------------
 
-    def get_or_create_user(self, phone_number: str, name: Optional[str] = None) -> Dict[str, Any]:
+    def get_or_create_user(
+        self, phone_number: str, name: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Fetch an existing user by phone or create a new one.
 
         Args:
@@ -39,7 +41,12 @@ class SupabaseService:
         Returns:
             User record as dict.
         """
-        result = self.db.table("users").select("*").eq("phone_number", phone_number).execute()
+        result = (
+            self.db.table("users")
+            .select("*")
+            .eq("phone_number", phone_number)
+            .execute()
+        )
         if result.data:
             return result.data[0]
 
@@ -52,7 +59,12 @@ class SupabaseService:
 
     def get_user_by_phone(self, phone_number: str) -> Optional[Dict[str, Any]]:
         """Fetch a user by phone number."""
-        result = self.db.table("users").select("*").eq("phone_number", phone_number).execute()
+        result = (
+            self.db.table("users")
+            .select("*")
+            .eq("phone_number", phone_number)
+            .execute()
+        )
         return result.data[0] if result.data else None
 
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
@@ -60,7 +72,9 @@ class SupabaseService:
         result = self.db.table("users").select("*").eq("id", user_id).execute()
         return result.data[0] if result.data else None
 
-    def update_user(self, user_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def update_user(
+        self, user_id: str, data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Update user fields."""
         result = self.db.table("users").update(data).eq("id", user_id).execute()
         return result.data[0] if result.data else None
@@ -76,7 +90,9 @@ class SupabaseService:
 
     def get_consultant_by_id(self, consultant_id: str) -> Optional[Dict[str, Any]]:
         """Fetch a consultant by UUID."""
-        result = self.db.table("consultants").select("*").eq("id", consultant_id).execute()
+        result = (
+            self.db.table("consultants").select("*").eq("id", consultant_id).execute()
+        )
         return result.data[0] if result.data else None
 
     def create_consultant(self, data: ConsultantCreate) -> Dict[str, Any]:
@@ -86,12 +102,19 @@ class SupabaseService:
         logger.info("Created consultant: %s", data.name)
         return result.data[0]
 
-    def update_consultant(self, consultant_id: str, data: ConsultantUpdate) -> Optional[Dict[str, Any]]:
+    def update_consultant(
+        self, consultant_id: str, data: ConsultantUpdate
+    ) -> Optional[Dict[str, Any]]:
         """Update consultant fields."""
         payload = data.model_dump(exclude_none=True)
         if not payload:
             return self.get_consultant_by_id(consultant_id)
-        result = self.db.table("consultants").update(payload).eq("id", consultant_id).execute()
+        result = (
+            self.db.table("consultants")
+            .update(payload)
+            .eq("id", consultant_id)
+            .execute()
+        )
         return result.data[0] if result.data else None
 
     def delete_consultant(self, consultant_id: str) -> bool:
@@ -103,7 +126,9 @@ class SupabaseService:
     # Availability
     # ------------------------------------------------------------------
 
-    def get_availability(self, consultant_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_availability(
+        self, consultant_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Return availability records, optionally filtered by consultant."""
         query = self.db.table("availability").select("*")
         if consultant_id:
@@ -179,7 +204,9 @@ class SupabaseService:
         )
         return result.data or []
 
-    def get_upcoming_bookings(self, from_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    def get_upcoming_bookings(
+        self, from_time: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
         """Return confirmed bookings with start_time in the future."""
         if from_time is None:
             from_time = datetime.now(timezone.utc)
@@ -193,7 +220,9 @@ class SupabaseService:
         )
         return result.data or []
 
-    def update_booking(self, booking_id: str, data: BookingUpdate) -> Optional[Dict[str, Any]]:
+    def update_booking(
+        self, booking_id: str, data: BookingUpdate
+    ) -> Optional[Dict[str, Any]]:
         """Update booking fields."""
         payload: Dict[str, Any] = {}
         if data.start_time:
@@ -206,7 +235,9 @@ class SupabaseService:
             payload["notes"] = data.notes
         if not payload:
             return self.get_booking_by_id(booking_id)
-        result = self.db.table("bookings").update(payload).eq("id", booking_id).execute()
+        result = (
+            self.db.table("bookings").update(payload).eq("id", booking_id).execute()
+        )
         return result.data[0] if result.data else None
 
     def cancel_booking(self, booking_id: str) -> Optional[Dict[str, Any]]:
@@ -221,7 +252,9 @@ class SupabaseService:
 
     def set_calendar_event_id(self, booking_id: str, event_id: str) -> None:
         """Store the Google Calendar event ID on a booking."""
-        self.db.table("bookings").update({"calendar_event_id": event_id}).eq("id", booking_id).execute()
+        self.db.table("bookings").update({"calendar_event_id": event_id}).eq(
+            "id", booking_id
+        ).execute()
 
     # ------------------------------------------------------------------
     # Conversation history
@@ -278,3 +311,40 @@ class SupabaseService:
             status = row.get("status", "unknown")
             stats[status] = stats.get(status, 0) + 1
         return {"total": len(all_bookings), "by_status": stats}
+
+    def get_pending_reminders(self, from_time: datetime) -> List[Dict[str, Any]]:
+        """
+        Fetch upcoming confirmed/rescheduled bookings that haven't
+        had all reminders sent yet.
+        """
+        # We look for bookings starting in the future (up to ~25 hours from now)
+        # and that are in a 'confirmed' or 'rescheduled' state.
+        response = (
+            self.db.table("bookings")
+            .select("*")
+            .gt("start_time", from_time.isoformat())
+            .in_("status", ["confirmed", "rescheduled"])
+            # Logic: Fetch if either of the reminders is still False
+            .or_("reminder_24h_sent.eq.false,reminder_1h_sent.eq.false")
+            .execute()
+        )
+        return response.data
+
+    def mark_reminder_sent(self, booking_id: str, label: str) -> None:
+        """
+        Update the database to flip the reminder flag to True.
+
+        Args:
+            booking_id: The UUID of the booking.
+            label: Either '24h' or '1h'.
+        """
+        column_name = "reminder_24h_sent" if label == "24h" else "reminder_1h_sent"
+
+        try:
+            self.db.table("bookings").update({column_name: True}).eq(
+                "id", booking_id
+            ).execute()
+
+            logger.info(f"Marked {label} reminder as sent for booking {booking_id}")
+        except Exception as e:
+            logger.error(f"Error updating reminder status for {booking_id}: {e}")

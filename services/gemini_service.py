@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from config import get_settings
 from utils.logger import get_logger
@@ -60,37 +61,32 @@ When responding to the user (not taking an action), use the "answer" action form
 
 
 class GeminiService:
-    """Manages multi-turn AI conversations using Google Gemini."""
+    """Manages multi-turn AI conversations using the modern Google Gen AI SDK."""
 
     def __init__(self) -> None:
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel(
-            model_name=settings.gemini_model,
-        )
+        # Initialize the persistent client
+        # It automatically picks up the GEMINI_API_KEY from environment variables
+        self.client = genai.Client(api_key=settings.gemini_api_key)
+        self.model_id = settings.gemini_model or "gemini-2.0-flash"
 
     def _build_system_prompt(self) -> str:
-        """Build the system prompt with current date/time injected."""
+        """Injects current time context into the system prompt."""
         return SYSTEM_PROMPT.format(
             today=datetime.now(timezone.utc).strftime("%A, %B %d %Y"),
             timezone=settings.timezone,
         )
 
-    def _format_history_for_gemini(
-        self, messages: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Convert stored message history to Gemini chat format.
-
-        Args:
-            messages: List of {'role': str, 'content': str} dicts.
-
-        Returns:
-            List of Gemini-compatible message dicts.
-        """
-        gemini_messages = []
+    def _format_history(self, messages: List[Dict[str, Any]]) -> List[types.Content]:
+        """Convert standard history dicts into SDK-specific types.Content objects."""
+        history = []
         for msg in messages:
             role = "user" if msg["role"] == "user" else "model"
-            gemini_messages.append({"role": role, "parts": [msg["content"]]})
-        return gemini_messages
+            history.append(
+                types.Content(
+                    role=role, parts=[types.Part.from_text(text=msg["content"])]
+                )
+            )
+        return history
 
     async def process_message(
         self,
@@ -98,35 +94,33 @@ class GeminiService:
         conversation_history: List[Dict[str, Any]],
         user_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Process a user message and return an AI response.
+        """Process message using the aio (async) client to prevent blocking."""
 
-        Args:
-            user_message: The user's latest message text.
-            conversation_history: Previous messages in the conversation.
-            user_context: Optional context dict (user name, language, etc.).
-
-        Returns:
-            Dict with 'action', 'data', and 'raw_response' keys.
-        """
-        system = self._build_system_prompt()
+        # Prepare the system instruction
+        sys_instr = self._build_system_prompt()
         if user_context:
             context_str = "\n".join(f"- {k}: {v}" for k, v in user_context.items())
-            system += f"\n\nUser context:\n{context_str}"
+            sys_instr += f"\n\nUser context:\n{context_str}"
 
-        history = self._format_history_for_gemini(conversation_history)
+        history = self._format_history(conversation_history)
 
         try:
-            chat = self.model.start_chat(history=history)
-            # Prepend system instruction to the first turn
-            if not history:
-                full_message = f"{system}\n\nUser: {user_message}"
-            else:
-                full_message = user_message
+            # 1. Create a chat session with dedicated system instructions
+            # We use the .aio namespace for asynchronous operations
+            chat = self.client.aio.chats.create(
+                model=self.model_id,
+                history=history,
+                config=types.GenerateContentConfig(
+                    system_instruction=sys_instr,
+                    temperature=0.3,
+                ),
+            )
 
-            response = chat.send_message(full_message)
+            # 2. Send the message asynchronously
+            response = await chat.send_message(user_message)
             raw_text = response.text.strip()
-            logger.debug("Gemini raw response: %s", raw_text)
 
+            logger.debug("Gemini response: %s", raw_text)
             return self._parse_response(raw_text)
 
         except Exception as exc:
@@ -134,34 +128,30 @@ class GeminiService:
             return {
                 "action": "answer",
                 "data": {
-                    "message": "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment."
+                    "message": "I'm having a bit of trouble thinking right now. Could you try that again?"
                 },
                 "raw_response": str(exc),
             }
 
     def _parse_response(self, raw_text: str) -> Dict[str, Any]:
-        """Parse Gemini response – either JSON action or plain text.
+        """Extracts JSON action from raw text, with safety fallback."""
+        try:
+            # Look for the JSON block in case the AI added commentary
+            json_start = raw_text.find("{")
+            json_end = raw_text.rfind("}") + 1
 
-        Args:
-            raw_text: Raw response string from Gemini.
+            if json_start != -1 and json_end > json_start:
+                clean_json = raw_text[json_start:json_end]
+                parsed = json.loads(clean_json)
 
-        Returns:
-            Parsed action dict.
-        """
-        # Try to extract JSON from the response
-        json_start = raw_text.find("{")
-        json_end = raw_text.rfind("}") + 1
-        if json_start != -1 and json_end > json_start:
-            json_str = raw_text[json_start:json_end]
-            try:
-                parsed = json.loads(json_str)
-                if "action" in parsed and "data" in parsed:
+                if "action" in parsed:
                     parsed["raw_response"] = raw_text
                     return parsed
-            except json.JSONDecodeError:
-                pass
 
-        # Fallback: treat entire response as a plain answer
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Fallback to a standard answer if parsing fails
         return {
             "action": "answer",
             "data": {"message": raw_text},
@@ -169,23 +159,12 @@ class GeminiService:
         }
 
     async def detect_language(self, text: str) -> str:
-        """Detect the language of the given text using Gemini.
-
-        Args:
-            text: Text to analyse.
-
-        Returns:
-            BCP-47 language code string (e.g. 'en', 'fr', 'es').
-        """
-        prompt = (
-            f"Detect the language of the following text and respond with only the BCP-47 "
-            f"language code (e.g. 'en', 'fr', 'es', 'ar'). Text: '{text}'"
-        )
+        """Fast language detection using the async model interface."""
+        prompt = f"Respond ONLY with the BCP-47 language code for this text: '{text}'"
         try:
-            response = self.model.generate_content(prompt)
-            code = response.text.strip().lower().split()[0]
-            # Return first token up to 5 chars to handle codes like 'en-US'
-            return code[:5]
-        except Exception as exc:
-            logger.warning("Language detection failed: %s", exc)
+            response = await self.client.aio.models.generate_content(
+                model=self.model_id, contents=prompt
+            )
+            return response.text.strip().lower()[:5]
+        except Exception:
             return "en"

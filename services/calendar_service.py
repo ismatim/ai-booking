@@ -35,7 +35,9 @@ class CalendarService:
 
         creds_data = settings.google_calendar_credentials
         if not creds_data:
-            raise ValueError("GOOGLE_CALENDAR_CREDENTIALS environment variable is not set.")
+            raise ValueError(
+                "GOOGLE_CALENDAR_CREDENTIALS environment variable is not set."
+            )
 
         # Support both file path and raw JSON string
         if os.path.isfile(creds_data):
@@ -110,7 +112,9 @@ class CalendarService:
             end_raw = event["end"].get("dateTime", event["end"].get("date"))
             start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
             end_dt = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
-            busy_intervals.append((start_dt.replace(tzinfo=None), end_dt.replace(tzinfo=None)))
+            busy_intervals.append(
+                (start_dt.replace(tzinfo=None), end_dt.replace(tzinfo=None))
+            )
 
         # Generate all possible slots and filter out busy ones
         free_slots = []
@@ -152,7 +156,7 @@ class CalendarService:
         start_time: datetime,
         end_time: datetime,
         description: Optional[str] = None,
-        attendee_emails: Optional[List[str]] = None,
+        attendee_emails: Optional[List[str] | None] = None,
     ) -> Optional[str]:
         """Create a Google Calendar event and return its event ID.
 
@@ -213,7 +217,9 @@ class CalendarService:
         """
         try:
             service = self._get_service()
-            event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+            event = (
+                service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+            )
             if start_time:
                 event["start"] = {
                     "dateTime": start_time.isoformat() + "Z",
