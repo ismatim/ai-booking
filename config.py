@@ -1,9 +1,9 @@
-"""Configuration management for AI Booking application."""
+"""Configuration management for AI Booking application using Pydantic V2."""
 
 from functools import lru_cache
 from typing import Optional
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -29,13 +29,14 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     supabase_password: str
+    # This is the psycopg2 connection string (Port 6543)
+    supabase_conn: str
 
     # Google Calendar
     google_calendar_credentials: Optional[str] = None  # JSON string or file path
     google_calendar_token: Optional[str] = None  # JSON string for OAuth token
 
     # Twilio Service
-    # Recovery: PF4MSAK33S7BSZ9GTDGQRT3H
     twilio_account_sid: str
     twilio_auth_token: str
     twilio_whatsapp_number: str
@@ -43,13 +44,17 @@ class Settings(BaseSettings):
     # Scheduler
     reminder_check_interval_minutes: int = 5
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # --- Pydantic V2 Configuration ---
+    # This replaces the old 'class Config'
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",  # Prevents crashing if .env has extra helper variables
+    )
 
 
 @lru_cache()
 def get_settings() -> Settings:
-    """Return cached application settings."""
+    """Return cached application settings (Singleton)."""
     return Settings()

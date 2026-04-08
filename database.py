@@ -2,6 +2,7 @@
 
 from supabase import Client, create_client
 
+
 from config import get_settings
 
 settings = get_settings()

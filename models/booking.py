@@ -1,11 +1,11 @@
 """Pydantic data models for the AI Booking application."""
 
-from datetime import datetime, time, timezone
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class BookingStatus(str, Enum):
@@ -52,5 +52,4 @@ class Booking(BaseModel):
     reminder_24h_sent: bool = False
     reminder_1h_sent: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

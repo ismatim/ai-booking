@@ -171,42 +171,45 @@ See [`dashboard/README.md`](dashboard/README.md) for full dashboard documentatio
 ## WhatsApp Webhook Setup
 
 1. In the [Meta Developer Console](https://developers.facebook.com/), set your webhook URL to:
+
    ```
    https://your-domain.com/webhook
    ```
+
 2. Set the verify token to match `WHATSAPP_VERIFY_TOKEN` in your `.env`.
 3. Subscribe to the `messages` webhook field.
 
 ## API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Health check |
-| GET/POST | `/webhook` | WhatsApp webhook |
-| GET/POST | `/bookings` | List / create bookings |
-| GET/PUT/POST | `/bookings/{id}` | Get / update / cancel booking |
-| GET/POST | `/consultants` | List / create consultants |
-| GET/PUT/DELETE | `/consultants/{id}` | Manage single consultant |
-| POST | `/consultants/{id}/availability` | Set availability slot |
-| GET | `/admin/stats` | Booking statistics |
-| GET | `/admin/users` | List all users |
-| GET | `/admin/bookings/all` | All bookings (admin) |
+| Method         | Path                             | Description                   |
+| -------------- | -------------------------------- | ----------------------------- |
+| GET            | `/`                              | Health check                  |
+| GET/POST       | `/webhook`                       | WhatsApp webhook              |
+| GET/POST       | `/bookings`                      | List / create bookings        |
+| GET/PUT/POST   | `/bookings/{id}`                 | Get / update / cancel booking |
+| GET/POST       | `/consultants`                   | List / create consultants     |
+| GET/PUT/DELETE | `/consultants/{id}`              | Manage single consultant      |
+| POST           | `/consultants/{id}/availability` | Set availability slot         |
+| GET            | `/admin/stats`                   | Booking statistics            |
+| GET            | `/admin/users`                   | List all users                |
+| GET            | `/admin/bookings/all`            | All bookings (admin)          |
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `WHATSAPP_TOKEN` | ✅ | Meta permanent access token |
-| `WHATSAPP_PHONE_NUMBER_ID` | ✅ | WhatsApp Business phone number ID |
-| `WHATSAPP_VERIFY_TOKEN` | ✅ | Custom webhook verify token |
-| `GEMINI_API_KEY` | ✅ | Google Gemini API key |
-| `SUPABASE_URL` | ✅ | Supabase project URL |
-| `SUPABASE_KEY` | ✅ | Supabase anon or service role key |
-| `GOOGLE_CALENDAR_CREDENTIALS` | ✅ | Path or JSON of Google credentials |
-| `TIMEZONE` | ❌ | App timezone (default: UTC) |
-| `GEMINI_MODEL` | ❌ | Gemini model (default: gemini-1.5-flash) |
-| `REMINDER_CHECK_INTERVAL_MINUTES` | ❌ | Reminder check frequency (default: 5) |
+| Variable                          | Required | Description                              |
+| --------------------------------- | -------- | ---------------------------------------- |
+| `WHATSAPP_TOKEN`                  | ✅       | Meta permanent access token              |
+| `WHATSAPP_PHONE_NUMBER_ID`        | ✅       | WhatsApp Business phone number ID        |
+| `WHATSAPP_VERIFY_TOKEN`           | ✅       | Custom webhook verify token              |
+| `GEMINI_API_KEY`                  | ✅       | Google Gemini API key                    |
+| `SUPABASE_URL`                    | ✅       | Supabase project URL                     |
+| `SUPABASE_KEY`                    | ✅       | Supabase anon or service role key        |
+| `GOOGLE_CALENDAR_CREDENTIALS`     | ✅       | Path or JSON of Google credentials       |
+| `TIMEZONE`                        | ❌       | App timezone (default: UTC)              |
+| `GEMINI_MODEL`                    | ❌       | Gemini model (default: gemini-1.5-flash) |
+| `REMINDER_CHECK_INTERVAL_MINUTES` | ❌       | Reminder check frequency (default: 5)    |
 
 ## License
 
 Distributed under the MIT License.
+

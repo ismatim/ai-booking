@@ -17,7 +17,9 @@ logger = get_logger(__name__)
 # System prompt for booking assistant
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a friendly and professional AI appointment booking assistant for a consulting service.
+SYSTEM_PROMPT = """
+You are a friendly and professional AI appointment booking assistant for a consulting service.
+The current data is {current_date}.
 
 Your responsibilities:
 1. Help users book, reschedule, or cancel appointments via WhatsApp
@@ -43,18 +45,20 @@ Important guidelines:
 - Timezone: {timezone}
 
 When you need to take an action, respond with a JSON object (and nothing else) in this format:
-{
+{{
   "action": "<action_name>",
-  "data": { ... }
-}
+  "data": {{
+    "message": "Your response here"
+  }}
+}}
 
 Available actions:
-- "check_availability": data = {"date": "YYYY-MM-DD", "time_preference": "morning|afternoon|evening|any", "consultant_id": "optional-uuid"}
-- "create_booking": data = {"consultant_id": "uuid", "start_time": "ISO8601", "end_time": "ISO8601", "service": "optional", "notes": "optional"}
-- "cancel_booking": data = {"booking_id": "uuid"}
-- "reschedule_booking": data = {"booking_id": "uuid", "new_start_time": "ISO8601", "new_end_time": "ISO8601"}
-- "view_bookings": data = {}
-- "answer": data = {"message": "your response text to the user"}
+- "check_availability": data = {{"date": "YYYY-MM-DD", "time_preference": "morning|afternoon|evening|any", "consultant_id": "optional-uuid"}}
+- "create_booking": data = {{"consultant_id": "uuid", "start_time": "ISO8601", "end_time": "ISO8601", "service": "optional", "notes": "optional"}}
+- "cancel_booking": data = {{"booking_id": "uuid"}}
+- "reschedule_booking": data = {{"booking_id": "uuid", "new_start_time": "ISO8601", "new_end_time": "ISO8601"}}
+- "view_bookings": data = {{}}
+- "answer": data = {{"message": "your response text to the user"}}
 
 When responding to the user (not taking an action), use the "answer" action format.
 """
@@ -74,6 +78,7 @@ class GeminiService:
         return SYSTEM_PROMPT.format(
             today=datetime.now(timezone.utc).strftime("%A, %B %d %Y"),
             timezone=settings.timezone,
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
     def _format_history(self, messages: List[Dict[str, Any]]) -> List[types.Content]:
