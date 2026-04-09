@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     debug: bool = False
     timezone: str = "UTC"
 
+    env: str
+
     # WhatsApp / Meta Business API
     whatsapp_token: str
     whatsapp_phone_number_id: str

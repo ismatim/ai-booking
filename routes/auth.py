@@ -2,7 +2,8 @@ from google_auth_oauthlib.flow import Flow
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from database import get_db
-from settings import get_settings
+
+from config import get_settings
 
 from utils.logger import get_logger
 
