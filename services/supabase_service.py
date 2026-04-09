@@ -5,9 +5,8 @@ from typing import Any, Dict, List, Optional
 from cryptography.fernet import Fernet
 from config import get_settings
 
-from supabase import Client
+from supabase import Client, create_client
 
-from database import get_supabase
 from models import (
     AvailabilityCreate,
     BookingCreate,
@@ -25,7 +24,8 @@ class SupabaseService:
     """Provides CRUD operations for all Supabase tables."""
 
     def __init__(self) -> None:
-        self.db: Client = get_supabase()
+        settings = get_settings()
+        self.db: Client = create_client(settings.supabase_url, settings.supabase_key)
         settings = get_settings()
         # Initialize the cipher with your secret key
         self.cipher = Fernet(settings.encryption_key.encode())
@@ -363,7 +363,7 @@ class SupabaseService:
             encrypted_token = self.cipher.encrypt(refresh_token.encode()).decode()
 
             return (
-                self.supabase.table("consultants")
+                self.db.table("consultants")
                 .update({"google_refresh_token": encrypted_token})
                 .eq("id", consultant_id)
                 .execute()
@@ -375,17 +375,21 @@ class SupabaseService:
 
     def get_decrypted_token(self, consultant_id: str):
         # Fetch the encrypted string
-        res = (
-            self.supabase.table("consultants")
-            .select("google_refresh_token")
-            .eq("id", consultant_id)
-            .single()
-            .execute()
-        )
+        try:
+            res = (
+                self.db.table("consultants")
+                .select("google_refresh_token")
+                .eq("id", consultant_id)
+                .single()
+                .execute()
+            )
 
-        encrypted_token = res.data.get("google_refresh_token")
-        if not encrypted_token:
-            return None
+            encrypted_token = res.data.get("google_refresh_token")
+            if not encrypted_token:
+                return None
 
-        # Decrypt it back to plain text
-        return self.cipher.decrypt(encrypted_token.encode()).decode()
+            # Decrypt it back to plain text
+            return self.cipher.decrypt(encrypted_token.encode()).decode()
+        except Exception as e:
+            print(f"❌ Failed to retrieve/decrypt token: {e}")
+            raise e

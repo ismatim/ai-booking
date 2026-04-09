@@ -18,3 +18,4 @@ pytest-mock>=3.12.0
 python-multipart>=0.0.24
 twilio
 psycopg2-binary
+itsdangerous

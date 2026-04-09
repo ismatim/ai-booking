@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Google Calendar
     google_calendar_credentials: Optional[str] = None  # JSON string or file path
     google_calendar_token: Optional[str] = None  # JSON string for OAuth token
+    google_calendar_client_id: str
+    google_calendar_client_secret: str
+    google_callback_url: str
 
     # Twilio Service
     twilio_account_sid: str
@@ -46,6 +49,8 @@ class Settings(BaseSettings):
 
     # Cryptography
     encryption_key: str
+    fast_api_auth_session_secret_key: str
+    fast_api_auth_secret_key: str
 
     # --- Pydantic V2 Configuration ---
     # This replaces the old 'class Config'

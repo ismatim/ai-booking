@@ -1,18 +1,14 @@
 """Supabase database client initialization."""
 
-from supabase import Client, create_client
+from typing import Optional
+from services.supabase_service import SupabaseService
+
+_db_service: Optional[SupabaseService] = None
 
 
-from config import get_settings
-
-settings = get_settings()
-
-_supabase_client: Client | None = None
-
-
-def get_supabase() -> Client:
-    """Return a singleton Supabase client."""
-    global _supabase_client
-    if _supabase_client is None:
-        _supabase_client = create_client(settings.supabase_url, settings.supabase_key)
-    return _supabase_client
+def get_db() -> SupabaseService:
+    """Return a singleton instance of the SupabaseService wrapper."""
+    global _db_service
+    if _db_service is None:
+        _db_service = SupabaseService()
+    return _db_service
