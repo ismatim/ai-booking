@@ -50,3 +50,4 @@ dashboard/.next/
 dashboard/.env.local
 
 node_modules/
+docs/

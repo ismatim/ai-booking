@@ -23,7 +23,9 @@ db_svc = SupabaseService()
 async def create_booking(data: BookingCreate) -> Dict[str, Any]:
     """Create a new booking for a user with a consultant."""
     if not validate_booking_duration(data.start_time, data.end_time):
-        raise HTTPException(status_code=400, detail="Invalid booking duration (must be 15 min – 8 h)")
+        raise HTTPException(
+            status_code=400, detail="Invalid booking duration (must be 15 min – 8 h)"
+        )
     try:
         booking = booking_svc.create_booking(
             user_id=str(data.user_id),

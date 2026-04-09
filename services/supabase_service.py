@@ -2,6 +2,8 @@
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from cryptography.fernet import Fernet
+from config import get_settings
 
 from supabase import Client
 
@@ -24,6 +26,9 @@ class SupabaseService:
 
     def __init__(self) -> None:
         self.db: Client = get_supabase()
+        settings = get_settings()
+        # Initialize the cipher with your secret key
+        self.cipher = Fernet(settings.encryption_key.encode())
 
     # ------------------------------------------------------------------
     # Users
@@ -348,3 +353,39 @@ class SupabaseService:
             logger.info(f"Marked {label} reminder as sent for booking {booking_id}")
         except Exception as e:
             logger.error(f"Error updating reminder status for {booking_id}: {e}")
+
+    def save_refresh_token(self, consultant_id: str, refresh_token: str):
+        """
+        Securely saves the Google Refresh Token for a specific consultant.
+        """
+        try:
+            # Encrypt the token
+            encrypted_token = self.cipher.encrypt(refresh_token.encode()).decode()
+
+            return (
+                self.supabase.table("consultants")
+                .update({"google_refresh_token": encrypted_token})
+                .eq("id", consultant_id)
+                .execute()
+            )
+
+        except Exception as e:
+            print(f"❌ Failed to save refresh token: {e}")
+            raise e
+
+    def get_decrypted_token(self, consultant_id: str):
+        # Fetch the encrypted string
+        res = (
+            self.supabase.table("consultants")
+            .select("google_refresh_token")
+            .eq("id", consultant_id)
+            .single()
+            .execute()
+        )
+
+        encrypted_token = res.data.get("google_refresh_token")
+        if not encrypted_token:
+            return None
+
+        # Decrypt it back to plain text
+        return self.cipher.decrypt(encrypted_token.encode()).decode()

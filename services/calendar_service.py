@@ -260,3 +260,22 @@ class CalendarService:
         except HttpError as exc:
             logger.error("Failed to delete calendar event %s: %s", event_id, exc)
             return False
+
+    def get_busy_slots(
+        self, calendar_id: str, start_time: datetime, end_time: datetime
+    ):
+        """
+        Fetches 'busy' events from Google Calendar.
+        """
+        # In a real app, you'd use service.events().list(...)
+        # For our simulation, let's see what events are actually there:
+        return self.search_events(calendar_id, start_time, end_time)
+
+    def get_available_slots(self, consultant_id: str, date: str):
+        """
+        1. Fetch Working Hours from Supabase for this consultant.
+        2. Fetch Busy Events from Google Calendar.
+        3. Return the calculated Free Slots.
+        """
+        # Implementation logic goes here
+        pass

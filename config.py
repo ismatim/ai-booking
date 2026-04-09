@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Scheduler
     reminder_check_interval_minutes: int = 5
 
+    # Cryptography
+    encryption_key: str
+
     # --- Pydantic V2 Configuration ---
     # This replaces the old 'class Config'
     model_config = SettingsConfigDict(

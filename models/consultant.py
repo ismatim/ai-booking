@@ -1,8 +1,8 @@
 """Pydantic data models for the AI Booking application."""
 
-from datetime import datetime, time, timezone
+from datetime import datetime, time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, ConfigDict

@@ -6,18 +6,11 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.supabase_service import SupabaseService
-from datetime import datetime
 
 
 def create_db():
     db = SupabaseService()
     print("🌱 Creating database tables...")
-
-    # Logic to create tables if they don't exist
-    # This is just a placeholder; actual implementation will depend on your schema
-    # db.create_table("consultants", ...)
-    # db.create_table("users", ...)
-    # db.create_table("bookings", ...)
 
     print("✅ Database tables created successfully!")
 
