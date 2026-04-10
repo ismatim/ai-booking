@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import Any, Dict, List, Optional
 
 from google.oauth2.credentials import Credentials
@@ -12,6 +12,8 @@ from googleapiclient.errors import HttpError
 
 from config import get_settings
 from utils.logger import get_logger
+from zoneinfo import ZoneInfo
+
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -59,91 +61,88 @@ class CalendarService:
     # ------------------------------------------------------------------
     # Availability helpers
     # ------------------------------------------------------------------
-
     def get_free_slots(
         self,
-        calendar_id: str,
-        date: datetime,
+        consultant_id: str,
+        date_to_check: datetime,  # Should be a UTC datetime at 00:00:00
+        work_start: time,  # From Availability model
+        work_end: time,  # From Availability model
         slot_duration_minutes: int = 60,
-        business_start_hour: int = 9,
-        business_end_hour: int = 17,
     ) -> List[Dict[str, Any]]:
-        """Return free time slots for a calendar on a given date.
 
-        Args:
-            calendar_id: Google Calendar ID to query.
-            date: The date to check availability for.
-            slot_duration_minutes: Duration of each slot in minutes.
-            business_start_hour: Start of business hours (24h, default 9).
-            business_end_hour: End of business hours (24h, default 17).
-
-        Returns:
-            List of dicts with 'start' and 'end' ISO8601 strings.
-        """
-        day_start = date.replace(
-            hour=business_start_hour, minute=0, second=0, microsecond=0
+        # 1. Define the Working Window in UTC
+        # We combine the requested date with the consultant's working hours
+        day_start = datetime.combine(
+            date_to_check.date(), work_start, tzinfo=ZoneInfo("UTC")
         )
-        day_end = date.replace(
-            hour=business_end_hour, minute=0, second=0, microsecond=0
+        day_end = datetime.combine(
+            date_to_check.date(), work_end, tzinfo=ZoneInfo("UTC")
         )
 
         try:
-            service = self._get_service()
+            # Use the consultant-specific service we built earlier
+            service = self._get_service_for_consultant(consultant_id)
+
             events_result = (
                 service.events()
                 .list(
-                    calendarId=calendar_id,
-                    timeMin=day_start.isoformat() + "Z",
-                    timeMax=day_end.isoformat() + "Z",
+                    calendarId="primary",
+                    timeMin=day_start.isoformat(),  # isoformat() handles the 'Z' or '+00:00'
+                    timeMax=day_end.isoformat(),
                     singleEvents=True,
                     orderBy="startTime",
                 )
                 .execute()
             )
+
             busy_events = events_result.get("items", [])
-        except HttpError as exc:
-            logger.error("Google Calendar API error: %s", exc)
+        except Exception as exc:
+            logger.error(f"Google API error for {consultant_id}: {exc}")
             return []
 
-        # Build busy intervals
+        # 2. Build Busy Intervals (Keep them Timezone-Aware!)
         busy_intervals = []
         for event in busy_events:
             start_raw = event["start"].get("dateTime", event["start"].get("date"))
             end_raw = event["end"].get("dateTime", event["end"].get("date"))
-            start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
-            busy_intervals.append(
-                (start_dt.replace(tzinfo=None), end_dt.replace(tzinfo=None))
+
+            # fromisoformat handles 'Z' automatically in modern Python
+            # If it's just a 'date' (all-day), we force it to UTC
+            b_start = datetime.fromisoformat(start_raw)
+            if b_start.tzinfo is None:
+                b_start = b_start.replace(tzinfo=ZoneInfo("UTC"))
+
+            b_end = datetime.fromisoformat(end_raw)
+            if b_end.tzinfo is None:
+                b_end = b_end.replace(tzinfo=ZoneInfo("UTC"))
+
+            busy_intervals.append((b_start, b_end))
+
+        # 3. Generate Slots
+        free_slots = []
+        current_slot_start = day_start
+        slot_delta = timedelta(minutes=slot_duration_minutes)
+
+        while current_slot_start + slot_delta <= day_end:
+            current_slot_end = current_slot_start + slot_delta
+
+            # Check if this window hits any busy intervals
+            is_busy = any(
+                current_slot_start < b_end and current_slot_end > b_start
+                for b_start, b_end in busy_intervals
             )
 
-        # Generate all possible slots and filter out busy ones
-        free_slots = []
-        slot_start = day_start
-        slot_delta = timedelta(minutes=slot_duration_minutes)
-        while slot_start + slot_delta <= day_end:
-            slot_end = slot_start + slot_delta
-            if not self._is_overlapping(slot_start, slot_end, busy_intervals):
+            if not is_busy:
                 free_slots.append(
                     {
-                        "start": slot_start.isoformat(),
-                        "end": slot_end.isoformat(),
+                        "start": current_slot_start.isoformat(),
+                        "end": current_slot_end.isoformat(),
                     }
                 )
-            slot_start += slot_delta
+
+            current_slot_start += slot_delta
 
         return free_slots
-
-    def _is_overlapping(
-        self,
-        slot_start: datetime,
-        slot_end: datetime,
-        busy_intervals: List[tuple],
-    ) -> bool:
-        """Return True if the slot overlaps with any busy interval."""
-        for busy_start, busy_end in busy_intervals:
-            if slot_start < busy_end and slot_end > busy_start:
-                return True
-        return False
 
     # ------------------------------------------------------------------
     # Event management
@@ -271,11 +270,31 @@ class CalendarService:
         # For our simulation, let's see what events are actually there:
         return self.search_events(calendar_id, start_time, end_time)
 
-    def get_available_slots(self, consultant_id: str, date: str):
+    def get_available_slots(self, consultant_id: str, date_obj: datetime):
         """
-        1. Fetch Working Hours from Supabase for this consultant.
-        2. Fetch Busy Events from Google Calendar.
-        3. Return the calculated Free Slots.
+        The 'Master' method:
+        1. Gets DB hours
+        2. Gets Google busy slots
+        3. Generates free windows
         """
-        # Implementation logic goes here
-        pass
+        # 1. Fetch Working Hours from DB
+        day_name = date_obj.strftime("%A").lower()
+        work_settings = self.db.get_availability_for_day(consultant_id, day_name)
+
+        if not work_settings:
+            logger.info(f"Consultant {consultant_id} is not working on {day_name}")
+            return []
+
+        # 2. Parse "09:00:00" into integers for your existing function
+        # Split by ':' and take the first two parts (hour, minute)
+        start_h, start_m = map(int, work_settings["start_time"].split(":")[:2])
+        end_h, end_m = map(int, work_settings["end_time"].split(":")[:2])
+
+        # 3. Call your refined slot generator
+        return self.get_free_slots(
+            calendar_id="primary",  # Or use consultant_id if stored as email
+            consultant_id=consultant_id,  # Added so we can fetch the right token
+            date=date_obj,
+            business_start_hour=start_h,
+            business_end_hour=end_h,
+        )

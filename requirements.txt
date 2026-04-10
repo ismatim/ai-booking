@@ -19,3 +19,4 @@ python-multipart>=0.0.24
 twilio
 psycopg2-binary
 itsdangerous
+tzdata

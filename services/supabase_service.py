@@ -130,16 +130,29 @@ class SupabaseService:
     # ------------------------------------------------------------------
     # Availability
     # ------------------------------------------------------------------
+    def get_availability_for_day(
+        self, consultant_id: str, day_of_week: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch the working hours for a specific consultant and day.
 
-    def get_availability(
-        self, consultant_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """Return availability records, optionally filtered by consultant."""
-        query = self.db.table("availability").select("*")
-        if consultant_id:
-            query = query.eq("consultant_id", consultant_id)
-        result = query.execute()
-        return result.data or []
+        Args:
+            consultant_id: UUID of the consultant.
+            day_of_week: 'monday', 'tuesday', etc.
+        """
+        result = (
+            self.db.table("availability")
+            .select("start_time, end_time")
+            .eq("consultant_id", consultant_id)
+            .eq("day_of_week", day_of_week.lower())
+            .execute()
+        )
+
+        if result.data:
+            # We return the first (and should be only) record
+            # The times are strings like "09:00:00"
+            return result.data[0]
+        return None
 
     def set_availability(self, data: AvailabilityCreate) -> Dict[str, Any]:
         """Upsert an availability record (one per consultant + day)."""
