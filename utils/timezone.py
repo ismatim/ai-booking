@@ -19,3 +19,22 @@ def to_local(dt: datetime, local_tz_str: str) -> datetime:
 def get_now_utc() -> datetime:
     """Get the current time in UTC, timezone-aware."""
     return datetime.now(ZoneInfo("UTC"))
+
+
+def format_readable_date(dt: datetime) -> str:
+    """Example: Friday, April 10th"""
+    # Using %d with a manual suffix if you want to be fancy
+    return dt.strftime("%A, %B %d")
+
+
+def format_readable_time(dt: datetime) -> str:
+    """Example: 3:00 PM"""
+    return dt.strftime("%I:%M %p").lstrip("0")
+
+
+def format_full_session(start: datetime, end: datetime) -> str:
+    """Example: Friday, April 10 @ 3:00 PM - 4:00 PM"""
+    date_part = format_readable_date(start)
+    start_time = format_readable_time(start)
+    end_time = format_readable_time(end)
+    return f"{date_part} @ {start_time} - {end_time}"

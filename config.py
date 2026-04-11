@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # Google Gemini AI
     gemini_api_key: str
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-2.5-flash"
 
     # Supabase
     supabase_url: str

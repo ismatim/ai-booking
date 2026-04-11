@@ -1,11 +1,10 @@
 """WhatsApp webhook router for AI Booking (Twilio & Meta Support)."""
 
+from twilio.twiml.messaging_response import MessagingResponse
 from datetime import datetime, timezone
 from typing import Any, Dict
-
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Form
-from fastapi.responses import PlainTextResponse
-
+from fastapi.responses import PlainTextResponse, Response
 from config import get_settings
 from services.booking_service import BookingService
 from services.gemini_service import GeminiService
@@ -14,6 +13,8 @@ from services.twilio_service import TwilioService
 from services.meta_service import MetaService
 from utils.logger import get_logger
 from utils.validators import normalize_phone_number, validate_phone_number
+
+from utils.timezone import format_readable_date
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -84,14 +85,14 @@ async def receive_twilio_message(
             process_inbound_logic, phone, Body, ProfileName, twilio_svc
         )
 
-    return ""  # Twilio accepts an empty body
+    # Return a valid, empty TwiML response to keep Twilio happy
+    twiml = MessagingResponse()
+    return Response(content=str(twiml), media_type="application/xml")
 
 
 # ---------------------------------------------------------------------------
 # Core Processing Pipeline
 # ---------------------------------------------------------------------------
-
-
 async def process_inbound_logic(
     phone: str, message_text: str, sender_name: str, messenger: Any
 ):
@@ -109,23 +110,30 @@ async def process_inbound_logic(
     history = history_record.get("messages", []) if history_record else []
     context = history_record.get("context", {}) if history_record else {}
 
-    # 2. Command Interception (Shortcuts)
+    # We check if this user is already 'bound' to a specific Financial Broker
+    active_consultant_id = context.get("active_consultant_id")
+    active_consultant = None
+
+    if active_consultant_id:
+        # Fetch the broker's metadata (name, services, bio) to give Gemini context
+        logger.info(f"User {user_id} has active consultant {active_consultant_id}")
+        active_consultant = db_svc.get_consultant(active_consultant_id)
+    # ------------------------------------------
+
     if message_text.strip().upper().startswith("CANCEL "):
         reply = await _handle_cancel_command_logic(message_text, user_id)
         await messenger.send_text_message(phone, reply)
         return
 
-    if message_text.strip().upper().startswith("RESCHEDULE "):
-        reply = await _handle_reschedule_command_logic(message_text, user_id, context)
-        await messenger.send_text_message(phone, reply)
-        db_svc.save_conversation(user_id, history, context)
-        return
-
-    # 3. AI Reasoning Turn
+    # Gemini reasoning turn
     user_context = {
         "user_name": sender_name,
         "language": user.get("language", "en"),
         "reschedule_id": context.get("reschedule_booking_id"),
+        # We pass the broker info (or None) to the AI
+        "active_consultant": active_consultant,
+        "discovery_mode": active_consultant is None,
+        "current_time": datetime.now(timezone.utc).isoformat(),
     }
 
     ai_result = await gemini_svc.process_message(
@@ -134,17 +142,18 @@ async def process_inbound_logic(
         user_context=user_context,
     )
 
-    # 4. Execute Extracted Action
+    # Execute extracted action
     action = ai_result.get("action", "answer")
     data = ai_result.get("data", {})
 
+    # The dispatcher now handles the 'switch' from Discovery to a specific Broker
     reply = await _dispatch_action(action, data, phone, user_id, context)
 
-    # 5. Send the Reply via the triggering messenger (Twilio or Meta)
+    # Send the reply
     if reply:
         await messenger.send_text_message(to=phone, body=reply)
 
-    # 6. Record the Conversation history
+    # Record the conversation history
     history.append(
         {
             "role": "user",
@@ -177,6 +186,9 @@ async def _dispatch_action(
     if action == "answer":
         return data.get("message", "How can I help you today?")
 
+    if action == "set_consultant":
+        return await _handle_set_consultant(data, context)
+
     if action == "check_availability":
         return await _handle_check_availability(data, context)
 
@@ -195,21 +207,52 @@ async def _dispatch_action(
     return data.get("message", "I'm not sure how to do that yet.")
 
 
+async def _handle_set_consultant(data: Dict, context: Dict) -> str:
+    name_query = data.get("consultant_name")
+    # You'll build this in db_svc to search your 'consultants' table
+    consultant = db_svc.find_consultant_by_name(name_query)
+
+    if consultant:
+        context["active_consultant_id"] = str(consultant["id"])
+        return f"Perfect. I've connected you with {consultant['name']}. They offer: {', '.join(consultant['services'])}. What can we do for you?"
+
+    return f"I couldn't find a broker named {name_query}. Could you please double-check the name?"
+
+
 async def _handle_check_availability(data: Dict, context: Dict) -> str:
+    # Security & Identity Gate
+    # Ensure we know which broker we are checking for
+    consultant_id = context.get("active_consultant_id")
+    if not consultant_id:
+        return "I'd be happy to check availability! Could you tell me which Consultant you'd like to book with?"
+
     date_str = data.get("date")
     if not date_str:
         return "Which day would you like to check?"
 
     try:
+        #  Parse and Query
         date = datetime.fromisoformat(date_str)
-        slots = booking_svc.get_available_slots(date=date)
+
+        # Pass the consultant_id to ensure we don't query the wrong calendar
+        # Optionally pass 'service' if Gemini extracted it for duration logic
+        slots = booking_svc.get_available_slots(
+            date=date, consultant_id=consultant_id, service_name=data.get("service")
+        )
 
         if not slots:
-            return f"No slots available for {date.strftime('%A, %B %d')}."
+            # Use your centralized logic
+            readable_date = format_readable_date(date)
+            return f"I'm sorry, there are no slots available for {readable_date}."
 
-        # Save slots in context so the AI/User can reference them
+        # 4. State Management
+        # Save slots in context so the User can just say "the first one" or "10am"
         context["pending_slots"] = slots
+
+        # 5. Presentation
+        # Ensure your format_slots_for_whatsapp also uses the time helpers!
         return booking_svc.format_slots_for_whatsapp(slots)
+
     except Exception as e:
         logger.error(f"Availability error: {e}")
         return "I had trouble checking the calendar. Could you try a different date?"
@@ -293,4 +336,3 @@ async def _handle_reschedule_command_logic(
 
     context["reschedule_booking_id"] = str(match["id"])
     return "📅 Got it. What's the new date and time you're looking for?"
-

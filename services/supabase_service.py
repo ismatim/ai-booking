@@ -100,6 +100,21 @@ class SupabaseService:
         )
         return result.data[0] if result.data else None
 
+    def get_consultant(self, consultant_id: str) -> dict | None:
+        """Fetches a single consultant by their UUID."""
+        try:
+            response = (
+                self.db.table("consultants")
+                .select("*")
+                .eq("id", consultant_id)
+                .maybe_single()
+                .execute()
+            )
+            return response.data
+        except Exception as e:
+            logger.error(f"Error fetching consultant {consultant_id}: {e}")
+            return None
+
     def create_consultant(self, data: ConsultantCreate) -> Dict[str, Any]:
         """Insert a new consultant record."""
         payload = data.model_dump(exclude_none=True)
@@ -406,3 +421,29 @@ class SupabaseService:
         except Exception as e:
             print(f"❌ Failed to retrieve/decrypt token: {e}")
             raise e
+
+    def find_consultant_by_name(self, name_query: str) -> Optional[Dict[str, Any]]:
+        """
+        Search for a consultant by name using case-insensitive partial matching.
+        """
+        try:
+            # We use .ilike for case-insensitive matching
+            # The % wildcards allow 'Maria' to match 'Maria Jenkins'
+            result = (
+                self.db.table("consultants")
+                .select("*")
+                .ilike("name", f"%{name_query}%")
+                .execute()
+            )
+
+            if not result.data:
+                logger.info(f"No consultant found matching: {name_query}")
+                return None
+
+            # If there are multiple matches, we return the first one
+            # Pro tip: You could later sort these by 'popularity' or 'relevance'
+            return result.data[0]
+
+        except Exception as e:
+            logger.error(f"Error searching for consultant: {e}")
+            return None

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from google import genai
-from google.genai import types
+from google.genai import types  # Ensure this is imported at the top
 
 from config import get_settings
 from utils.logger import get_logger
@@ -18,8 +18,11 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """
-You are a friendly and professional AI appointment booking assistant for a consulting service.
-The current data is {current_date}.
+You are the professional Concierge for a Financial Brokerage Firm. 
+Your goal is to connect clients with the right Financial Broker and manage their appointments.
+
+Current Context:
+- Active Broker: {active_consultant} (If null, you are in 'Firm Concierge' mode. If set, you are acting as their personal assistant).
 
 Your responsibilities:
 1. Help users book, reschedule, or cancel appointments via WhatsApp
@@ -43,16 +46,18 @@ Important guidelines:
 - If a date/time is unclear, ask for clarification
 - Today's date is: {today}
 - Timezone: {timezone}
+- Support the user's language (English/Spanish/etc).
+- If the broker mentioned is not found, stay in Concierge mode and ask for clarification.
 
 When you need to take an action, respond with a JSON object (and nothing else) in this format:
 {{
   "action": "<action_name>",
-  "data": {{
-    "message": "Your response here"
-  }}
+  "data": {{ ... }},
+  "raw_response": "Friendly WhatsApp message here"
 }}
 
 Available actions:
+- "set_consultant": data = {{"consultant_name": "extracted_name"}} -> Use when user identifies a broker.
 - "check_availability": data = {{"date": "YYYY-MM-DD", "time_preference": "morning|afternoon|evening|any", "consultant_id": "optional-uuid"}}
 - "create_booking": data = {{"consultant_id": "uuid", "start_time": "ISO8601", "end_time": "ISO8601", "service": "optional", "notes": "optional"}}
 - "cancel_booking": data = {{"booking_id": "uuid"}}
@@ -71,7 +76,7 @@ class GeminiService:
         # Initialize the persistent client
         # It automatically picks up the GEMINI_API_KEY from environment variables
         self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.model_id = settings.gemini_model or "gemini-2.0-flash"
+        self.model_id = settings.gemini_model or "gemini-2.5-flash"
 
     def _build_system_prompt(self) -> str:
         """Injects current time context into the system prompt."""
@@ -82,13 +87,28 @@ class GeminiService:
         )
 
     def _format_history(self, messages: List[Dict[str, Any]]) -> List[types.Content]:
-        """Convert standard history dicts into SDK-specific types.Content objects."""
+        """
+        Convert standard history dicts into SDK-specific types.Content objects.
+        Filters out 'system' messages to avoid duplicates with the system_instruction.
+        """
         history = []
         for msg in messages:
+            # 1. Skip system messages in history
+            # (We already pass the system prompt in the config)
+            if msg["role"] == "system":
+                continue
+
+            # 2. Map roles: 'assistant' (from DB) -> 'model' (for Gemini)
             role = "user" if msg["role"] == "user" else "model"
+
+            # 3. Handle potential empty content gracefully
+            content_text = msg.get("content", "")
+            if not content_text:
+                continue
+
             history.append(
                 types.Content(
-                    role=role, parts=[types.Part.from_text(text=msg["content"])]
+                    role=role, parts=[types.Part.from_text(text=content_text)]
                 )
             )
         return history
@@ -96,46 +116,52 @@ class GeminiService:
     async def process_message(
         self,
         user_message: str,
-        conversation_history: List[Dict[str, Any]],
-        user_context: Optional[Dict[str, Any]] = None,
+        conversation_history: List[Dict],
+        user_context: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Process message using the aio (async) client to prevent blocking."""
+        """
+        Sends the message to Gemini using the new 2.0 Client SDK.
+        """
+        # 1. Prepare System Instruction
+        system_instruction = SYSTEM_PROMPT.format(
+            today=user_context.get("current_time"),
+            timezone=user_context.get("timezone", "UTC"),
+            active_consultant=json.dumps(user_context.get("active_consultant")),
+        )
 
-        # Prepare the system instruction
-        sys_instr = self._build_system_prompt()
-        if user_context:
-            context_str = "\n".join(f"- {k}: {v}" for k, v in user_context.items())
-            sys_instr += f"\n\nUser context:\n{context_str}"
-
+        # 2. Convert history using your existing helper _format_history
+        # This turns your dicts into the required types.Content objects
         history = self._format_history(conversation_history)
 
+        # 3. Configure the generation (JSON mode + System Prompt)
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.1,
+            response_mime_type="application/json",
+        )
+
         try:
-            # 1. Create a chat session with dedicated system instructions
-            # We use the .aio namespace for asynchronous operations
-            chat = self.client.aio.chats.create(
-                model=self.model_id,
-                history=history,
-                config=types.GenerateContentConfig(
-                    system_instruction=sys_instr,
-                    temperature=0.3,
-                ),
+            # 4. Use the async client (aio) to generate content
+            # We pass history + the current message as the 'contents'
+            response = await self.client.aio.models.generate_content(
+                model=self.model_id, contents=history + [user_message], config=config
             )
 
-            # 2. Send the message asynchronously
-            response = await chat.send_message(user_message)
-            raw_text = response.text.strip()
+            # 5. Parse JSON
+            ai_data = json.loads(response.text)
 
-            logger.debug("Gemini response: %s", raw_text)
-            return self._parse_response(raw_text)
+            return {
+                "action": ai_data.get("action", "answer"),
+                "data": ai_data.get("data", {}),
+                "raw_response": ai_data.get("raw_response", "I'm here to help."),
+            }
 
-        except Exception as exc:
-            logger.error("Gemini API error: %s", exc)
+        except Exception as e:
+            logger.error(f"Gemini Service Error: {e}")
             return {
                 "action": "answer",
-                "data": {
-                    "message": "I'm having a bit of trouble thinking right now. Could you try that again?"
-                },
-                "raw_response": str(exc),
+                "data": {},
+                "raw_response": "Sorry, I hit a snag.",
             }
 
     def _parse_response(self, raw_text: str) -> Dict[str, Any]:
