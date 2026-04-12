@@ -70,6 +70,9 @@ class CalendarService:
         slot_duration_minutes: int = 60,
     ) -> List[Dict[str, Any]]:
 
+        logger.info(
+            f"Generating free slots for consultant {consultant_id} on {date_to_check.date()} with working hours {work_start} - {work_end}"
+        )
         # 1. Define the Working Window in UTC
         # We combine the requested date with the consultant's working hours
         day_start = datetime.combine(
@@ -81,19 +84,18 @@ class CalendarService:
 
         try:
             # Use the consultant-specific service we built earlier
-            service = self._get_service_for_consultant(consultant_id)
+            service = self._get_service()
+            events = service._get_service_for_consultant(
+                consultant_id
+            )  # Ensure we have the right creds
 
-            events_result = (
-                service.events()
-                .list(
-                    calendarId="primary",
-                    timeMin=day_start.isoformat(),  # isoformat() handles the 'Z' or '+00:00'
-                    timeMax=day_end.isoformat(),
-                    singleEvents=True,
-                    orderBy="startTime",
-                )
-                .execute()
-            )
+            events_result = events.list(
+                calendarId="primary",
+                timeMin=day_start.isoformat(),  # isoformat() handles the 'Z' or '+00:00'
+                timeMax=day_end.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+            ).execute()
 
             busy_events = events_result.get("items", [])
         except Exception as exc:
@@ -259,42 +261,3 @@ class CalendarService:
         except HttpError as exc:
             logger.error("Failed to delete calendar event %s: %s", event_id, exc)
             return False
-
-    def get_busy_slots(
-        self, calendar_id: str, start_time: datetime, end_time: datetime
-    ):
-        """
-        Fetches 'busy' events from Google Calendar.
-        """
-        # In a real app, you'd use service.events().list(...)
-        # For our simulation, let's see what events are actually there:
-        return self.search_events(calendar_id, start_time, end_time)
-
-    def get_available_slots(self, consultant_id: str, date_obj: datetime):
-        """
-        The 'Master' method:
-        1. Gets DB hours
-        2. Gets Google busy slots
-        3. Generates free windows
-        """
-        # 1. Fetch Working Hours from DB
-        day_name = date_obj.strftime("%A").lower()
-        work_settings = self.db.get_availability_for_day(consultant_id, day_name)
-
-        if not work_settings:
-            logger.info(f"Consultant {consultant_id} is not working on {day_name}")
-            return []
-
-        # 2. Parse "09:00:00" into integers for your existing function
-        # Split by ':' and take the first two parts (hour, minute)
-        start_h, start_m = map(int, work_settings["start_time"].split(":")[:2])
-        end_h, end_m = map(int, work_settings["end_time"].split(":")[:2])
-
-        # 3. Call your refined slot generator
-        return self.get_free_slots(
-            calendar_id="primary",  # Or use consultant_id if stored as email
-            consultant_id=consultant_id,  # Added so we can fetch the right token
-            date=date_obj,
-            business_start_hour=start_h,
-            business_end_hour=end_h,
-        )

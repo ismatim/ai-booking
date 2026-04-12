@@ -43,22 +43,64 @@ class BookingService:
         Returns:
             List of slot dicts with consultant info and ISO8601 times.
         """
-        consultants = self.db.get_all_consultants()
+        logger.info(
+            "Checking availability for date %s with consultant_id=%s",
+            date.date(),
+            consultant_id,
+        )
         if consultant_id:
-            consultants = [c for c in consultants if str(c["id"]) == consultant_id]
+            consultant = self.db.get_consultant(consultant_id)
+
+            logger.info(
+                f"Consultant found: id={consultant.get('id')}, "
+                f"name={consultant.get('name')}, "
+                f"email={consultant.get('email')}, "
+                f"calendar_id={consultant.get('calendar_id')}"
+            )
+            consultants = [consultant] if consultant else []
+        else:
+            # Fallback only if no ID is present (e.g., general availability check)
+            consultants = self.db.get_all_consultants()
+
+        if not consultants:
+            return []
 
         slots: List[Dict[str, Any]] = []
+
         for consultant in consultants:
             cal_id = consultant.get("calendar_id")
+            availability = self.db.get_availability_for_day(
+                consultant_id=str(consultant["id"])
+            )
+
+            if not availability:
+                logger.warning(
+                    f"Skipping {consultant['name']}: No availability found for weekday {date.weekday()}"
+                )
+                continue
+
+            logger.info(
+                "Checking availability for consultant %s (Calendar ID: %s)",
+                consultant["name"],
+                cal_id,
+            )
             if not cal_id:
                 continue
             try:
                 free = self.calendar.get_free_slots(
-                    calendar_id=cal_id,
-                    date=date,
+                    consultant_id=cal_id,  # The email (ismael@gmail.com)
+                    date_to_check=date,  # Correct keyword name
+                    work_start=availability["start_time"],  # Required: e.g., "09:00:00"
+                    work_end=availability["end_time"],  # Required: e.g., "17:00:00"
                     slot_duration_minutes=slot_duration_minutes,
                 )
                 for slot in free:
+                    logger.info(
+                        "Found free slot for %s: %s to %s",
+                        consultant["name"],
+                        slot["start"],
+                        slot["end"],
+                    )
                     slots.append(
                         {
                             "consultant_id": str(consultant["id"]),
@@ -146,7 +188,9 @@ class BookingService:
             description = f"Phone: {user.get('phone_number', 'N/A')}"
             if notes:
                 description += f"\nNotes: {notes}"
-            attendee_emails = [consultant.get("email")] if consultant.get("email") else None
+            attendee_emails = (
+                [consultant.get("email")] if consultant.get("email") else None
+            )
             event_id = self.calendar.create_event(
                 calendar_id=cal_id,
                 summary=summary,
@@ -161,7 +205,9 @@ class BookingService:
 
         return booking
 
-    def cancel_booking(self, booking_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    def cancel_booking(
+        self, booking_id: str, user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Cancel a booking and remove the Google Calendar event.
 
         Args:
@@ -254,8 +300,10 @@ class BookingService:
         """
         bookings = self.db.get_bookings_by_user(user_id)
         active = [
-            b for b in bookings
-            if b.get("status") in (BookingStatus.CONFIRMED.value, BookingStatus.RESCHEDULED.value)
+            b
+            for b in bookings
+            if b.get("status")
+            in (BookingStatus.CONFIRMED.value, BookingStatus.RESCHEDULED.value)
         ]
         if not active:
             return "📭 You have no upcoming bookings."
@@ -299,5 +347,7 @@ class BookingService:
             lines.append(f"💰 Rate: ${consultant['rate']:.2f}/hr")
         lines.append(f"\n📌 Booking ID: `{str(booking['id'])[:8]}...`")
         lines.append("\nYou'll receive a reminder 24h and 1h before your appointment.")
-        lines.append("Reply *CANCEL <booking_id>* to cancel or *RESCHEDULE <booking_id>* to reschedule.")
+        lines.append(
+            "Reply *CANCEL <booking_id>* to cancel or *RESCHEDULE <booking_id>* to reschedule."
+        )
         return "\n".join(lines)

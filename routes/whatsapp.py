@@ -214,7 +214,7 @@ async def _handle_set_consultant(data: Dict, context: Dict) -> str:
 
     if consultant:
         context["active_consultant_id"] = str(consultant["id"])
-        return f"Perfect. I've connected you with {consultant['name']}. They offer: {', '.join(consultant['services'])}. What can we do for you?"
+        return f"Perfect. I've connected you with {consultant['name']}. What can we do for you?"
 
     return f"I couldn't find a broker named {name_query}. Could you please double-check the name?"
 
@@ -236,9 +236,7 @@ async def _handle_check_availability(data: Dict, context: Dict) -> str:
 
         # Pass the consultant_id to ensure we don't query the wrong calendar
         # Optionally pass 'service' if Gemini extracted it for duration logic
-        slots = booking_svc.get_available_slots(
-            date=date, consultant_id=consultant_id, service_name=data.get("service")
-        )
+        slots = booking_svc.get_available_slots(date=date, consultant_id=consultant_id)
 
         if not slots:
             # Use your centralized logic

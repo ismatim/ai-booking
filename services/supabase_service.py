@@ -145,9 +145,7 @@ class SupabaseService:
     # ------------------------------------------------------------------
     # Availability
     # ------------------------------------------------------------------
-    def get_availability_for_day(
-        self, consultant_id: str, day_of_week: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_availability_for_day(self, consultant_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch the working hours for a specific consultant and day.
 
@@ -159,7 +157,6 @@ class SupabaseService:
             self.db.table("availability")
             .select("start_time, end_time")
             .eq("consultant_id", consultant_id)
-            .eq("day_of_week", day_of_week.lower())
             .execute()
         )
 
