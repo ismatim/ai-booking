@@ -27,6 +27,7 @@ class User(BaseModel):
     phone_number: str
     name: Optional[str] = None
     language: str = "en"
+    google_refresh_token: Optional[str] = Field(None, max_length=500)
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

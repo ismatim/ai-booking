@@ -54,10 +54,22 @@ class Settings(BaseSettings):
     fast_api_auth_session_secret_key: str
     fast_api_auth_secret_key: str
 
+    # Integration
+
+    integration_test_consultant_id: Optional[str] = (
+        None  # UUID of a test consultant for integration tests
+    )
+    integration_target_calendar_id: Optional[str] = (
+        None  # Calendar ID for integration tests
+    )
+    integration_scopes: Optional[str] = (
+        None  # Comma-separated scopes for integration tests
+    )
+
     # --- Pydantic V2 Configuration ---
     # This replaces the old 'class Config'
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.integration"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",  # Prevents crashing if .env has extra helper variables

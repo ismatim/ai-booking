@@ -17,7 +17,7 @@ router = APIRouter(prefix="/auth", tags=["Bookings"])
 def create_flow(redirect_uri: str):
     return Flow.from_client_secrets_file(
         "client_secrets.json",
-        scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+        scopes=["https://www.googleapis.com/auth/calendar.events"],
         redirect_uri=redirect_uri,
     )
 
@@ -26,16 +26,16 @@ def create_flow(redirect_uri: str):
 async def auth_google(request: Request, consultant_id: str):
     flow = Flow.from_client_secrets_file(
         "client_secrets.json",
-        scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+        scopes=["https://www.googleapis.com/auth/calendar.events"],
         redirect_uri=settings.google_callback_url,
     )
 
     # We pass the consultant_id in the 'state' so we know who they are when they come back
-    authorization_url, state = flow.authorization_url(
+    authorization_url, _ = flow.authorization_url(
         access_type="offline",  # CRITICAL: This gives you the refresh token
-        include_granted_scopes="true",
+        include_granted_scopes="false",
         state=consultant_id,
-        autogenerate_code_verifier=False,  # This is needed for PKCE flow
+        autogenerate_code_verifier=True,  # This is needed for PKCE flow
         prompt="consent",  # TODO: force to ask for consent, REMOVE later.
     )
 
@@ -57,7 +57,6 @@ async def auth_callback(request: Request, code: str, state: str):
     # Exchange the code for tokens
     flow.code_verifier = code_verifier
 
-    # Now this will work!
     try:
         flow.fetch_token(code=code, code_verifier=code_verifier)
     except Exception as e:
@@ -65,7 +64,11 @@ async def auth_callback(request: Request, code: str, state: str):
         return {"error": "Failed to fetch token"}
 
     credentials = flow.credentials
+
     # Save credentials.refresh_token to Supabase for this consultant_id
+    logger.info(
+        f"Saving refresh token for consultant_id: {consultant_id}, refresh_token: {credentials.refresh_token}"
+    )
     db.save_refresh_token(consultant_id, credentials.refresh_token)
 
     return {
@@ -76,8 +79,8 @@ async def auth_callback(request: Request, code: str, state: str):
 
 @router.get("/test-auth")
 async def start_test_auth():
-    # Use a real consultant ID from your Supabase 'consultants' table
-    test_consultant_id = "423bb8b8-e3a3-4599-9c81-2fb11d4655c9"
+    # Use a real user ID from your Supabase 'users' table
+    test_consultant_id = "42694d00-e6a0-4f17-99db-f15bd80b2f60"
 
     # Redirect the browser to your /auth/google route
     return RedirectResponse(f"/auth/google?consultant_id={test_consultant_id}")

@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime, timedelta, time
 from typing import Any, Dict, List, Optional
+from cryptography.fernet import Fernet
 
 from google.oauth2.credentials import Credentials
 from google.oauth2.service_account import Credentials as ServiceCredentials
@@ -13,7 +14,7 @@ from googleapiclient.errors import HttpError
 from config import get_settings
 from utils.logger import get_logger
 from zoneinfo import ZoneInfo
-
+from utils.timezone import to_utc
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -29,6 +30,8 @@ class CalendarService:
 
     def __init__(self) -> None:
         self._service = None
+
+        self.cipher = Fernet(settings.encryption_key.encode())
 
     def _get_service(self):
         """Lazily initialise and return the Google Calendar service client."""
@@ -59,12 +62,39 @@ class CalendarService:
         return self._service
 
     # ------------------------------------------------------------------
+    # Google Calendar Tokens helpers
+    # ------------------------------------------------------------------
+    def get_auth_service(self, encrypted_token: str):
+        """
+        Builds a dedicated Google Calendar service for a specific consultant.
+        Does NOT cache to self._service to avoid cross-user identity leaks.
+        """
+        try:
+            # 1. Decrypt the token
+            refresh_token = self.cipher.decrypt(encrypted_token.encode()).decode()
+
+            # 2. Reconstruct credentials
+            creds = Credentials(
+                token=None,  # Automatically refreshed by the library
+                refresh_token=refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=settings.google_calendar_client_id,
+                client_secret=settings.google_calendar_client_secret,
+            )
+
+            return build("calendar", "v3", credentials=creds)
+
+        except Exception as e:
+            logger.error(f"Failed to build Google service: {e}")
+            raise
+
+    # ------------------------------------------------------------------
     # Availability helpers
     # ------------------------------------------------------------------
     def get_free_slots(
         self,
         consultant_id: str,
-        date_to_check: datetime,  # Should be a UTC datetime at 00:00:00
+        date_to_check: datetime,  # Should be a UTC datetime at 01:00:00
         work_start: time,  # From Availability model
         work_end: time,  # From Availability model
         slot_duration_minutes: int = 60,
@@ -73,7 +103,7 @@ class CalendarService:
         logger.info(
             f"Generating free slots for consultant {consultant_id} on {date_to_check.date()} with working hours {work_start} - {work_end}"
         )
-        # 1. Define the Working Window in UTC
+        # 2. Define the Working Window in UTC
         # We combine the requested date with the consultant's working hours
         day_start = datetime.combine(
             date_to_check.date(), work_start, tzinfo=ZoneInfo("UTC")
@@ -91,7 +121,7 @@ class CalendarService:
 
             events_result = events.list(
                 calendarId="primary",
-                timeMin=day_start.isoformat(),  # isoformat() handles the 'Z' or '+00:00'
+                timeMin=day_start.isoformat(),  # isoformat() handles the 'Z' or '+01:00'
                 timeMax=day_end.isoformat(),
                 singleEvents=True,
                 orderBy="startTime",
@@ -102,25 +132,34 @@ class CalendarService:
             logger.error(f"Google API error for {consultant_id}: {exc}")
             return []
 
-        # 2. Build Busy Intervals (Keep them Timezone-Aware!)
+        # Build Busy Intervals (Keep them Timezone-Aware!)
         busy_intervals = []
         for event in busy_events:
-            start_raw = event["start"].get("dateTime", event["start"].get("date"))
-            end_raw = event["end"].get("dateTime", event["end"].get("date"))
+            # If transparency is 'transparent', the user is "Free".
+            # 'opaque' (or missing) means they are "Busy".
+            if event.get("transparency") == "transparent":
+                logger.info(f"Skipping transparent event: {event.get('summary')}")
+                continue
 
-            # fromisoformat handles 'Z' automatically in modern Python
-            # If it's just a 'date' (all-day), we force it to UTC
+            # --- IMPROVED: HANDLE DATE VS DATETIME ---
+            start_raw = event["start"].get("dateTime") or event["start"].get("date")
+            end_raw = event["end"].get("dateTime") or event["end"].get("date")
+
+            if not start_raw or not end_raw:
+                continue
+
             b_start = datetime.fromisoformat(start_raw)
+            b_end = datetime.fromisoformat(end_raw)
+
+            # Ensure UTC for comparison
             if b_start.tzinfo is None:
                 b_start = b_start.replace(tzinfo=ZoneInfo("UTC"))
-
-            b_end = datetime.fromisoformat(end_raw)
             if b_end.tzinfo is None:
                 b_end = b_end.replace(tzinfo=ZoneInfo("UTC"))
 
             busy_intervals.append((b_start, b_end))
 
-        # 3. Generate Slots
+        # Generate Slots
         free_slots = []
         current_slot_start = day_start
         slot_delta = timedelta(minutes=slot_duration_minutes)

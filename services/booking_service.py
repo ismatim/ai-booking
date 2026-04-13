@@ -1,5 +1,6 @@
 """Booking business logic orchestrating Calendar, Supabase, and WhatsApp."""
 
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -87,11 +88,13 @@ class BookingService:
             if not cal_id:
                 continue
             try:
+                work_start = time.fromisoformat(availability["start_time"])
+                work_end = time.fromisoformat(availability["end_time"])
                 free = self.calendar.get_free_slots(
                     consultant_id=cal_id,  # The email (ismael@gmail.com)
                     date_to_check=date,  # Correct keyword name
-                    work_start=availability["start_time"],  # Required: e.g., "09:00:00"
-                    work_end=availability["end_time"],  # Required: e.g., "17:00:00"
+                    work_start=work_start,  # Required: e.g., "09:00:00"
+                    work_end=work_end,  # Required: e.g., "17:00:00"
                     slot_duration_minutes=slot_duration_minutes,
                 )
                 for slot in free:

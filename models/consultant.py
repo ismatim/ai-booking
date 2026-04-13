@@ -80,6 +80,7 @@ class ConsultantBase(BaseModel):
     rate: Optional[float] = Field(None, ge=0)
     services: Optional[List[str]] = None
     bio: Optional[str] = Field(None, max_length=500)
+    google_refresh_token: Optional[str] = Field(None, max_length=500)
     timezone: str = Field(
         default="UTC", description="IANA timezone string (e.g., 'Europe/London')"
     )

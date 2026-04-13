@@ -1,5 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+from typing import Any, Dict, Optional
 
 
 def to_utc(dt: datetime, local_tz_str: str) -> datetime:
@@ -19,6 +21,55 @@ def to_local(dt: datetime, local_tz_str: str) -> datetime:
 def get_now_utc() -> datetime:
     """Get the current time in UTC, timezone-aware."""
     return datetime.now(ZoneInfo("UTC"))
+
+
+# .isoformat() on a timezone-aware object handles the +00:00 perfectly.
+def get_now_utc_iso():
+    """
+    Returns the current UTC time as an RFC3339 formatted string.
+    Best for: Direct use in Google Calendar API parameters (timeMin/timeMax).
+    """
+    # Google requires the offset. .isoformat() on an aware object
+    # produces exactly what Google needs: '2026-04-12T19:20:00+00:00'
+    return get_now_utc().isoformat()
+
+
+def get_google_time_range(days: int = 7):
+    """
+    Returns a tuple of (time_min, time_max) as ISO strings.
+    Defaults to a 7-day range starting from now.
+    """
+    now = get_now_utc()
+    future = now + timedelta(days=days)
+
+    # Return both as strings ready for the Google API
+    return now.isoformat(), future.isoformat()
+
+
+def parse_google_datetime(time_dict: Dict[str, Any]) -> Optional[datetime]:
+    """
+    Parses Google's start/end time dictionaries into a UTC-aware datetime.
+    Handles both 'dateTime' (specific time) and 'date' (all-day events).
+    """
+    if not time_dict:
+        return None
+
+    # Extract the raw string (check dateTime first, then date)
+    raw = time_dict.get("dateTime") or time_dict.get("date")
+    if not raw:
+        return None
+
+    # Parse the ISO string
+    # Python 3.11+ handles 'Z' and offsets automatically
+    dt = datetime.fromisoformat(raw)
+
+    # Ensure it is timezone-aware and in UTC
+    if dt.tzinfo is None:
+        # If it was a 'date' (all-day), it's naive; force to UTC
+        return dt.replace(tzinfo=timezone.utc)
+
+    # If it had a different timezone, convert it to UTC
+    return dt.astimezone(timezone.utc)
 
 
 def format_readable_date(dt: datetime) -> str:

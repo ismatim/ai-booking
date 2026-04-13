@@ -18,6 +18,9 @@ test: ## Run all tests silently
 test-v: ## Run tests with verbose output and print statements (-s)
 	$(PYTEST) -v -s
 
+test-integration: ## Run only integration tests
+	$(PYTEST) tests/integrations/test_calendars/test_google_calendar.py  
+
 run: ## Start the FastAPI server with auto-reload
 	$(PYTHON) -m uvicorn main:app --reload
 

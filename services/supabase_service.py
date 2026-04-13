@@ -387,12 +387,18 @@ class SupabaseService:
             # Encrypt the token
             encrypted_token = self.cipher.encrypt(refresh_token.encode()).decode()
 
-            return (
+            response = (
                 self.db.table("consultants")
                 .update({"google_refresh_token": encrypted_token})
                 .eq("id", consultant_id)
                 .execute()
             )
+
+            if not response.data:
+                logger.error(
+                    f"❌ DATABASE UPDATE FAILED: No consultant found with ID {consultant_id}"
+                )
+                return False
 
         except Exception as e:
             print(f"❌ Failed to save refresh token: {e}")
