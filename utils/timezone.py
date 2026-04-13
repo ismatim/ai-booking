@@ -72,6 +72,24 @@ def parse_google_datetime(time_dict: Dict[str, Any]) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
+def format_google_datetime(dt: datetime, all_day: bool = False) -> str:
+    """
+    Converts a datetime object into a Google-compatible RFC3339 string.
+    If all_day=True, returns 'YYYY-MM-DD'.
+    If all_day=False, returns 'YYYY-MM-DDTHH:MM:SS+00:00'.
+    """
+    if all_day:
+        return dt.date().isoformat()
+
+    # Ensure awareness (Google will reject naive datetimes)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+
+    return dt.isoformat()
+
+
 def format_readable_date(dt: datetime) -> str:
     """Example: Friday, April 10th"""
     # Using %d with a manual suffix if you want to be fancy

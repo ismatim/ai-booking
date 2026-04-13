@@ -14,7 +14,8 @@ from googleapiclient.errors import HttpError
 from config import get_settings
 from utils.logger import get_logger
 from zoneinfo import ZoneInfo
-from utils.timezone import to_utc
+
+from utils.timezone import get_google_time_range
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -112,21 +113,22 @@ class CalendarService:
             date_to_check.date(), work_end, tzinfo=ZoneInfo("UTC")
         )
 
+        # Use the consultant-specific service we built earlier
+        time_min, time_max = get_google_time_range()
         try:
-            # Use the consultant-specific service we built earlier
             service = self._get_service()
-            events = service._get_service_for_consultant(
-                consultant_id
-            )  # Ensure we have the right creds
-
-            events_result = events.list(
-                calendarId="primary",
-                timeMin=day_start.isoformat(),  # isoformat() handles the 'Z' or '+01:00'
-                timeMax=day_end.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-            ).execute()
-
+            events_result = (
+                service.events()
+                .list(
+                    calendarId="primary",
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=10,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute()
+            )
             busy_events = events_result.get("items", [])
         except Exception as exc:
             logger.error(f"Google API error for {consultant_id}: {exc}")

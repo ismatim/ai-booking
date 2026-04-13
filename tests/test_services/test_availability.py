@@ -3,6 +3,7 @@ from datetime import datetime, time
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 from services.calendar_service import CalendarService
+from tests.helpers.calendars_faker import generate_mock_google_event
 
 
 @pytest.fixture
@@ -16,32 +17,27 @@ def calendar_service():
 
 
 def test_get_free_slots_with_conflict(calendar_service):
-    # --- SETUP ---
+    # --- ASSIGN ---
     # Day: April 10, 2026
     # Working Hours: 09:00 to 12:00 (3 hours total)
-    test_date = datetime(2026, 4, 10, tzinfo=ZoneInfo("UTC"))
+    test_date = datetime(2026, 4, 10, hour=10, tzinfo=ZoneInfo("UTC"))
     work_start = time(9, 0)
     work_end = time(12, 0)
 
     # Mock Google Busy Event: 10:00 to 11:00
-    mock_busy_event = {
-        "items": [
-            {
-                "start": {"dateTime": "2026-04-10T10:00:00Z"},
-                "end": {"dateTime": "2026-04-10T11:00:00Z"},
-                "summary": "Busy Meeting",
-            }
-        ]
-    }
+    personal_event = generate_mock_google_event(
+        summary="Client Call",
+        start_dt=test_date,
+        is_workspace=False,
+    )
+    mock_busy_event = {"items": [personal_event]}
 
     # Mock the internal _get_service_for_consultant to return a fake API client
     mock_google_api = MagicMock()
     mock_google_api.events().list().execute.return_value = mock_busy_event
-    calendar_service._get_service_for_consultant = MagicMock(
-        return_value=mock_google_api
-    )
+    calendar_service._get_service = MagicMock(return_value=mock_google_api)
 
-    # --- EXECUTE ---
+    # --- ACT ---
     # We expect 60-minute slots.
     # 09:00-10:00 -> FREE
     # 10:00-11:00 -> BUSY (Should be missing)
@@ -54,6 +50,7 @@ def test_get_free_slots_with_conflict(calendar_service):
         slot_duration_minutes=60,
     )
 
+    print(f"Generated Slots: {slots}")
     # --- ASSERT ---
     assert len(slots) == 2
     assert slots[0]["start"] == "2026-04-10T09:00:00+00:00"
