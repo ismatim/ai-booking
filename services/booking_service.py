@@ -91,7 +91,7 @@ class BookingService:
                 work_start = time.fromisoformat(availability["start_time"])
                 work_end = time.fromisoformat(availability["end_time"])
                 free = self.calendar.get_free_slots(
-                    consultant_id=cal_id,  # The email (ismael@gmail.com)
+                    consultant_id=cal_id,
                     date_to_check=date,  # Correct keyword name
                     work_start=work_start,  # Required: e.g., "09:00:00"
                     work_end=work_end,  # Required: e.g., "17:00:00"

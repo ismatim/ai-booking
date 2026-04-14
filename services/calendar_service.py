@@ -71,10 +71,10 @@ class CalendarService:
         Does NOT cache to self._service to avoid cross-user identity leaks.
         """
         try:
-            # 1. Decrypt the token
+            # Decrypt the token
             refresh_token = self.cipher.decrypt(encrypted_token.encode()).decode()
 
-            # 2. Reconstruct credentials
+            # Reconstruct credentials
             creds = Credentials(
                 token=None,  # Automatically refreshed by the library
                 refresh_token=refresh_token,

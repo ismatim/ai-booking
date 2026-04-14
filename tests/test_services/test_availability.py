@@ -5,6 +5,10 @@ from zoneinfo import ZoneInfo
 from services.calendar_service import CalendarService
 from tests.helpers.calendars_faker import generate_mock_google_event
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 @pytest.fixture
 def calendar_service():
@@ -17,6 +21,7 @@ def calendar_service():
 
 
 def test_get_free_slots_with_conflict(calendar_service):
+
     # --- ASSIGN ---
     # Day: April 10, 2026
     # Working Hours: 09:00 to 12:00 (3 hours total)
@@ -50,7 +55,7 @@ def test_get_free_slots_with_conflict(calendar_service):
         slot_duration_minutes=60,
     )
 
-    print(f"Generated Slots: {slots}")
+    logger.info(f"Generated Slots: {slots}")
     # --- ASSERT ---
     assert len(slots) == 2
     assert slots[0]["start"] == "2026-04-10T09:00:00+00:00"
