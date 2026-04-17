@@ -1,3 +1,6 @@
+import uuid
+import psycopg
+from langchain_postgres import PostgresChatMessageHistory
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import JsonOutputParser
@@ -5,67 +8,14 @@ from langchain_core.output_parsers import JsonOutputParser
 from config import get_settings
 from utils.logger import get_logger
 
+from prompts.concierge import (
+    BASE_SYSTEM_PROMPT,
+    JSON_FORMAT_INSTRUCTIONS,
+    ACTION_DEFINITIONS,
+)
+
 settings = get_settings()
 logger = get_logger(__name__)
-
-
-# Variables to be filled by the chain: today, timezone, active_consultant, reschedule_id, user_message
-BASE_SYSTEM_PROMPT = """
-You are the professional Concierge for a Financial Brokerage Firm. 
-Your goal is to connect clients with the right Financial Broker and manage their appointments.
-
-Current Context:
-- Today's date is: {today}
-- Timezone: {timezone}
-- Active Broker: {active_consultant} (If null, you are in 'Firm Concierge' mode).
-- Reschedule ID: {reschedule_id} (If set, you are modifying this specific booking).
-
-Your responsibilities:
-1. Help users book, reschedule, or cancel appointments via WhatsApp.
-2. Understand natural language date/time requests.
-3. Collect all required info: date/time, service type, and notes.
-4. Confirm details before finalizing.
-5. Support the user's language (English/Spanish/etc).
-
-Booking & Rescheduling Flow:
-1. Greet the user.
-2. If Rescheduling:
-   - If {reschedule_id} is null: Search bookings first using 'view_bookings'.
-   - If {reschedule_id} is present: Assume all date/time mentions refer to updating booking {reschedule_id}.
-3. If booking: ask for preferred date/time and service.
-4. Show available slots and confirm details before finalizing.
-
-{format_instructions}
-
-{action_definitions}
-
-Important guidelines:
-- Be concise (WhatsApp style). Emojis sparingly.
-- If {reschedule_id} is present, use it as 'booking_id' in your JSON.
-- If a broker mentioned is not found, stay in Concierge mode.
-"""
-
-# Static string: No variables here, so single braces { } are safe
-JSON_FORMAT_INSTRUCTIONS = """
-When you need to take an action, respond with a JSON object (and nothing else) in this format:
-{
-  "action": "<action_name>",
-  "data": { "key": "value" },
-  "raw_response": "Friendly WhatsApp message here"
-}
-"""
-
-# Static string: The list of schema definitions
-ACTION_DEFINITIONS = """
-Available actions:
-- "set_consultant": {"consultant_name": "extracted_name"}
-- "check_availability": {"date": "YYYY-MM-DD", "time_preference": "morning|afternoon|evening|any", "consultant_id": "optional-uuid"}
-- "create_booking": {"consultant_id": "uuid", "start_time": "ISO8601", "end_time": "ISO8601", "service": "optional"}
-- "cancel_booking": {"booking_id": "uuid"}
-- "reschedule_booking": {"booking_id": "uuid", "new_start_time": "ISO8601", "new_end_time": "ISO8601"}
-- "view_bookings": {}
-- "answer": {"message": "your response text to the user"}
-"""
 
 
 class LangChainService:
@@ -90,22 +40,37 @@ class LangChainService:
             action_definitions=ACTION_DEFINITIONS,
         )
 
+        self.parser = JsonOutputParser()
         # Create the Chain
-        self.chain = self.prompt | self.llm | JsonOutputParser()
+        self.chain = self.prompt | self.llm | self.parser
 
-    async def process_message(self, user_message, conversation_history, user_context):
-        # LangChain handles the variable injection
-        # user_context contains today, active_consultant, etc.
-        logger.info(
-            "Processing message with LangChain. User message: %s, User context: %s",
-            user_message,
-            user_context,
-        )
-        inputs = {
-            "user_message": user_message,
-            "history": conversation_history,
-            **user_context,  # Spreads today, reschedule_id, etc.
-        }
+    async def process_message(
+        self, user_phone: str, user_message: str, user_context: dict
+    ):
+        # uuid5 uses a namespace (we'll use DNS) to hash your phone number into a valid UUID
+        session_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, user_phone))
 
-        # This one line calls Gemini, traces to LangSmith, and parses the JSON
-        return await self.chain.ainvoke(inputs)
+        # Connection string must be the 'postgresql://' URI from Supabase
+        with psycopg.connect(settings.supabase_conn, prepare_threshold=None) as conn:
+            # 1. Initialize History (Automatic Load)
+            history = PostgresChatMessageHistory(
+                "messages", session_uuid, sync_connection=conn
+            )
+            # 2. Build Inputs
+            inputs = {
+                "user_message": user_message,
+                "history": history.messages,  # Loads previous turns automatically
+                "today": user_context.get("today") or user_context.get("current_time"),
+                "timezone": user_context.get("timezone", "UTC"),
+                "active_consultant": user_context.get("active_consultant"),
+                "reschedule_id": user_context.get("reschedule_id"),
+            }
+
+            # 3. Call Gemini
+            ai_result = await self.chain.ainvoke(inputs)
+
+            # 4. Automatic Save (This populates your new columns!)
+            history.add_user_message(user_message)
+            history.add_ai_message(ai_result.get("raw_response", ""))
+
+            return ai_result

@@ -20,3 +20,5 @@ twilio
 psycopg2-binary
 itsdangerous
 tzdata
+langchain-postgres
+psycopg[binary]

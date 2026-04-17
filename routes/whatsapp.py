@@ -128,8 +128,6 @@ async def process_inbound_logic(
         logger.info(f"User {user_id} has active consultant {active_consultant_id}")
         active_consultant = db_svc.get_consultant(active_consultant_id)
 
-    history = db_svc.get_messages(conv_id, limit=MAX_CONVERSATION_HISTORY)
-
     if message_text.strip().upper().startswith("CANCEL "):
         reply = await _handle_cancel_command_logic(message_text, user_id)
         await messenger.send_text_message(phone, reply)
@@ -146,27 +144,26 @@ async def process_inbound_logic(
     }
 
     ai_result = await langchain_svc.process_message(
+        user_phone=phone,
         user_message=message_text,
-        conversation_history=history,
         user_context=user_context,
     )
+
+    logger.info(f"AI Result for user {user_id}: {ai_result}")
 
     # Execute extracted action
     action = ai_result.get("action", "answer")
     data = ai_result.get("data", {})
+    ai_response = ai_result.get("raw_response", "")
 
     # The dispatcher now handles the 'switch' from Discovery to a specific Broker
     context = conv.get("context", {})
     reply = await _dispatch_action(action, data, conv_id, context=context)
 
     # Send the reply
+    message_to_send = reply or ai_response
     if reply:
-        await messenger.send_text_message(to=phone, body=reply)
-
-    # Save History
-    db_svc.save_message(conv_id, "user", message_text)
-    if ai_result.get("raw_response"):
-        db_svc.save_message(conv_id, "assistant", ai_result["raw_response"])
+        await messenger.send_text_message(to=phone, body=message_to_send)
 
 
 # ---------------------------------------------------------------------------
@@ -211,12 +208,27 @@ async def _dispatch_action(
 
 async def _handle_set_consultant(data: Dict, context: Dict) -> str:
     name_query = data.get("consultant_name")
-    # You'll build this in db_svc to search your 'consultants' table
+    phone = context.get("user_phone")  # Ensure you pass the phone number in context!
+
     consultant = db_svc.find_consultant_by_name(name_query)
 
     if consultant:
+        # 1. Update the local dictionary (for the current response)
+        context["active_consultant"] = consultant["name"]
         context["active_consultant_id"] = str(consultant["id"])
-        return f"Perfect. I've connected you with {consultant['name']}. What can we do for you?"
+
+        #  Save to the Database
+        # This is what stops the "Groundhog Day" loop!
+        db_svc.update_user_context(
+            phone,
+            {
+                "active_consultant": consultant["name"],
+                "active_consultant_id": str(consultant["id"]),
+                "discovery_mode": False,  # Turn off discovery once a broker is picked
+            },
+        )
+
+        return None
 
     return f"I couldn't find a broker named {name_query}. Could you please double-check the name?"
 

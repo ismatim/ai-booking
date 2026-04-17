@@ -334,13 +334,42 @@ class SupabaseService:
             {"conversation_id": conversation_id, "role": role, "content": content}
         ).execute()
 
-    def update_conversation_context(
-        self, conversation_id: str, context: Dict[str, Any]
-    ):
-        """Updates the JSONB context field in the conversations table."""
-        self.db.table("conversations").update({"context": context}).eq(
-            "id", conversation_id
-        ).execute()
+    def update_user_context(self, identifier: str, updates: dict):
+        try:
+            if not identifier:
+                print("Error: No identifier (phone) provided to update_user_context")
+                return None
+
+            # 1. Fetch existing context safely
+            query = (
+                self.db.table("conversations")
+                .select("context")
+                .eq("external_id", identifier)
+                .maybe_single()
+            )
+            res = query.execute()
+
+            # 2. Check if res is None or has no data
+            current_context = {}
+            if res and hasattr(res, "data") and res.data:
+                current_context = res.data.get("context", {})
+
+            # 3. Merge updates
+            new_context = {**current_context, **updates}
+
+            # 4. Upsert (Update or Insert) the record
+            return (
+                self.db.table("conversations")
+                .upsert(
+                    {"external_id": identifier, "context": new_context},
+                    on_conflict="external_id",
+                )
+                .execute()
+            )
+
+        except Exception as e:
+            print(f"FAILED to update context for {identifier}: {e}")
+            return None
 
     # ------------------------------------------------------------------
     # Statistics (admin)
