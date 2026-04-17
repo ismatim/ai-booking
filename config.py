@@ -66,8 +66,13 @@ class Settings(BaseSettings):
         None  # Comma-separated scopes for integration tests
     )
 
+    # LangSmith
+    langsmith_tracing: bool = False
+    langsmith_endpoint: Optional[str] = None
+    langsmith_api_key: Optional[str] = None
+    langsmith_project: Optional[str] = None
+
     # --- Pydantic V2 Configuration ---
-    # This replaces the old 'class Config'
     model_config = SettingsConfigDict(
         env_file=(".env", ".env.integration"),
         env_file_encoding="utf-8",

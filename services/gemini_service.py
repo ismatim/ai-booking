@@ -9,6 +9,7 @@ from google.genai import types  # Ensure this is imported at the top
 
 from config import get_settings
 from utils.logger import get_logger
+from utils.timezone import format_human_readable_date
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -29,15 +30,19 @@ Your responsibilities:
 2. Understand natural language date/time requests (e.g. "next Tuesday afternoon", "this Friday at 3pm")
 3. Collect all required booking information: preferred date/time, service type, any special notes
 4. Confirm bookings and provide clear summaries
-5. Answer questions about services, pricing, and consultant availability
+5. Answer questions about services, pricing, and broker availability
 6. Support multiple languages - always respond in the same language the user uses
 
 Booking flow:
 1. Greet the user and ask what they need
-2. If booking: ask for preferred date/time and service
-3. Show available slots for requested time period
-4. Confirm booking details before finalizing
-5. Provide booking confirmation with details
+2. If Rescheduling:
+   - If {reschedule_id} is null: Search for their existing bookings first using "view_bookings" or ask for details to find it.
+   - If {reschedule_id} is present: Do NOT ask which booking to change. Assume all date/time mentions refer to updating booking {reschedule_id}.
+3. Collect new date/time and confirm availability.
+4. If booking: ask for preferred date/time and service
+5. Show available slots for requested time period
+6. Confirm booking details before finalizing
+7. Provide booking confirmation with details
 
 Important guidelines:
 - Be concise and clear in WhatsApp messages (avoid very long responses)
@@ -47,6 +52,8 @@ Important guidelines:
 - Today's date is: {today}
 - Timezone: {timezone}
 - Support the user's language (English/Spanish/etc).
+- Use {reschedule_id} as the 'booking_id' in your JSON response whenever it is present.
+- If the user changes their mind and wants to book a NEW appointment instead of rescheduling the current one, ignore the {reschedule_id}.
 - If the broker mentioned is not found, stay in Concierge mode and ask for clarification.
 
 When you need to take an action, respond with a JSON object (and nothing else) in this format:
@@ -122,18 +129,24 @@ class GeminiService:
         """
         Sends the message to Gemini using the new 2.0 Client SDK.
         """
-        # 1. Prepare System Instruction
+        # Prepare System Instruction
+        today_human_readable = format_human_readable_date(
+            user_context.get("current_time"), user_context.get("timezone", "UTC")
+        )
         system_instruction = SYSTEM_PROMPT.format(
-            today=user_context.get("current_time"),
+            today=today_human_readable,
             timezone=user_context.get("timezone", "UTC"),
-            active_consultant=json.dumps(user_context.get("active_consultant")),
+            active_consultant=json.dumps(user_context.get("active_consultant"))
+            if user_context.get("active_consultant")
+            else "None",
+            reschedule_id=user_context.get("reschedule_id", "None"),
         )
 
-        # 2. Convert history using your existing helper _format_history
+        # Convert history using your existing helper _format_history
         # This turns your dicts into the required types.Content objects
         history = self._format_history(conversation_history)
 
-        # 3. Configure the generation (JSON mode + System Prompt)
+        # Configure the generation (JSON mode + System Prompt)
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
             temperature=0.1,
@@ -141,7 +154,7 @@ class GeminiService:
         )
 
         try:
-            # 4. Use the async client (aio) to generate content
+            # Use the async client (aio) to generate content
             # We pass history + the current message as the 'contents'
             response = await self.client.aio.models.generate_content(
                 model=self.model_id, contents=history + [user_message], config=config
@@ -188,14 +201,3 @@ class GeminiService:
             "data": {"message": raw_text},
             "raw_response": raw_text,
         }
-
-    async def detect_language(self, text: str) -> str:
-        """Fast language detection using the async model interface."""
-        prompt = f"Respond ONLY with the BCP-47 language code for this text: '{text}'"
-        try:
-            response = await self.client.aio.models.generate_content(
-                model=self.model_id, contents=prompt
-            )
-            return response.text.strip().lower()[:5]
-        except Exception:
-            return "en"

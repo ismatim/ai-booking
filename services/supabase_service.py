@@ -290,44 +290,57 @@ class SupabaseService:
     # Conversation history
     # ------------------------------------------------------------------
 
-    def get_conversation(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch the conversation history for a user."""
+    def get_or_create_conversation(
+        self, external_id: str, chat_type: str = "individual"
+    ) -> Dict[str, Any]:
+        """Finds or creates the conversation record and returns the row (including context)."""
         result = (
-            self.db.table("conversation_history")
+            self.db.table("conversations")
             .select("*")
-            .eq("user_id", user_id)
+            .eq("external_id", external_id)
             .execute()
         )
-        return result.data[0] if result.data else None
 
-    def save_conversation(
-        self,
-        user_id: str,
-        messages: List[Dict[str, Any]],
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Upsert conversation history for a user."""
-        payload: Dict[str, Any] = {
-            "user_id": user_id,
-            "messages": messages,
-            "context": context or {},
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+        if result.data:
+            return result.data[0]
+
+        # Create new conversation if it doesn't exist
+        new_payload = {
+            "external_id": external_id,
+            "type": chat_type,
+            "context": {},  # Initial empty context
         }
-        existing = self.get_conversation(user_id)
-        if existing:
-            result = (
-                self.db.table("conversation_history")
-                .update(payload)
-                .eq("user_id", user_id)
-                .execute()
-            )
-        else:
-            result = self.db.table("conversation_history").insert(payload).execute()
-        return result.data[0]
+        res = self.db.table("conversations").insert(new_payload).execute()
+        return res.data[0]
 
-    def clear_conversation(self, user_id: str) -> None:
-        """Remove conversation history for a user."""
-        self.db.table("conversation_history").delete().eq("user_id", user_id).execute()
+    def get_messages(
+        self, conversation_id: str, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Fetches the latest messages for a specific conversation."""
+        result = (
+            self.db.table("messages")
+            .select("role, content")
+            .eq("conversation_id", conversation_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        # Reverse so Gemini gets them in chronological order
+        return result.data[::-1]
+
+    def save_message(self, conversation_id: str, role: str, content: str):
+        """Inserts a single message row."""
+        self.db.table("messages").insert(
+            {"conversation_id": conversation_id, "role": role, "content": content}
+        ).execute()
+
+    def update_conversation_context(
+        self, conversation_id: str, context: Dict[str, Any]
+    ):
+        """Updates the JSONB context field in the conversations table."""
+        self.db.table("conversations").update({"context": context}).eq(
+            "id", conversation_id
+        ).execute()
 
     # ------------------------------------------------------------------
     # Statistics (admin)

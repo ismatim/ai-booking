@@ -34,6 +34,26 @@ def get_now_utc_iso():
     return get_now_utc().isoformat()
 
 
+def format_human_readable_date(iso_time_str: str, tz_str: str) -> str:
+    """
+    Parses a UTC ISO string, localizes it, and returns a human-friendly date.
+    Example: "2026-04-16T19:35:00Z" -> "Thursday, April 16, 2026"
+    """
+    try:
+        # Parse the ISO string (FastAPI/Twilio usually sends this in UTC)
+        dt_utc = datetime.fromisoformat(iso_time_str.replace("Z", "+00:00"))
+
+        # Localize using your existing utility
+        localized_dt = to_local(dt_utc, tz_str)
+
+        # Format with Time
+        # %I:%M %p gives "02:30 PM"
+        return localized_dt.strftime("%A, %B %d, %Y at %I:%M %p")
+    except Exception as _:
+        # Fallback in case of a parsing error so the prompt doesn't crash
+        return "the current date"
+
+
 def get_google_time_range(days: int = 7):
     """
     Returns a tuple of (time_min, time_max) as ISO strings.

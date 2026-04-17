@@ -2,15 +2,16 @@
 
 from twilio.twiml.messaging_response import MessagingResponse
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Form
 from fastapi.responses import PlainTextResponse, Response
 from config import get_settings
 from services.booking_service import BookingService
-from services.gemini_service import GeminiService
+
 from services.supabase_service import SupabaseService
 from services.twilio_service import TwilioService
 from services.meta_service import MetaService
+from services.langchain_service import LangChainService
 from utils.logger import get_logger
 from utils.validators import normalize_phone_number, validate_phone_number
 
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/webhook", tags=["WhatsApp Webhook"])
 # --- Service Initializations ---
 twilio_svc = TwilioService()
 meta_svc = MetaService()
-gemini_svc = GeminiService()
+langchain_svc = LangChainService()
 booking_svc = BookingService()
 db_svc = SupabaseService()
 
@@ -75,6 +76,7 @@ async def receive_twilio_message(
     From: str = Form(...),
     Body: str = Form(...),
     ProfileName: str = Form("User"),
+    ConversationSid: Optional[str] = Form(None),
 ):
     """Handle incoming Twilio (Form-Data) payloads."""
     # Twilio format is 'whatsapp:+123456789'
@@ -82,7 +84,7 @@ async def receive_twilio_message(
 
     if phone and Body:
         background_tasks.add_task(
-            process_inbound_logic, phone, Body, ProfileName, twilio_svc
+            process_inbound_logic, phone, Body, ProfileName, twilio_svc, ConversationSid
         )
 
     # Return a valid, empty TwiML response to keep Twilio happy
@@ -94,49 +96,56 @@ async def receive_twilio_message(
 # Core Processing Pipeline
 # ---------------------------------------------------------------------------
 async def process_inbound_logic(
-    phone: str, message_text: str, sender_name: str, messenger: Any
+    phone: str,
+    message_text: str,
+    sender_name: str,
+    messenger: Any,
+    conversation_sid: Optional[str] = None,
 ):
+
+    external_id = conversation_sid if conversation_sid else phone
+    chat_type = "group" if conversation_sid else "individual"
+
+    conv = db_svc.get_or_create_conversation(external_id, chat_type)
+    conv_id = conv["id"]
+
+    # Access state directly from the row
+    active_consultant_id = conv.get("active_consultant_id")
+    reschedule_id = conv["context"].get("reschedule_id") or None
+
     """The 'Brain' of the app: processes messages, calls AI, and replies."""
     phone = normalize_phone_number(phone)
     if not validate_phone_number(phone):
         logger.warning(f"Invalid phone number: {phone}")
         return
 
-    # 1. Identity Management
+    # Identity Management
     user = db_svc.get_or_create_user(phone_number=phone, name=sender_name)
     user_id = str(user["id"])
 
-    history_record = db_svc.get_conversation(user_id)
-    history = history_record.get("messages", []) if history_record else []
-    context = history_record.get("context", {}) if history_record else {}
-
-    # We check if this user is already 'bound' to a specific Financial Broker
-    active_consultant_id = context.get("active_consultant_id")
     active_consultant = None
-
     if active_consultant_id:
-        # Fetch the broker's metadata (name, services, bio) to give Gemini context
         logger.info(f"User {user_id} has active consultant {active_consultant_id}")
         active_consultant = db_svc.get_consultant(active_consultant_id)
-    # ------------------------------------------
+
+    history = db_svc.get_messages(conv_id, limit=MAX_CONVERSATION_HISTORY)
 
     if message_text.strip().upper().startswith("CANCEL "):
         reply = await _handle_cancel_command_logic(message_text, user_id)
         await messenger.send_text_message(phone, reply)
         return
 
-    # Gemini reasoning turn
+    # Setting up context
     user_context = {
         "user_name": sender_name,
         "language": user.get("language", "en"),
-        "reschedule_id": context.get("reschedule_booking_id"),
-        # We pass the broker info (or None) to the AI
+        "reschedule_id": reschedule_id,
         "active_consultant": active_consultant,
         "discovery_mode": active_consultant is None,
         "current_time": datetime.now(timezone.utc).isoformat(),
     }
 
-    ai_result = await gemini_svc.process_message(
+    ai_result = await langchain_svc.process_message(
         user_message=message_text,
         conversation_history=history,
         user_context=user_context,
@@ -147,31 +156,17 @@ async def process_inbound_logic(
     data = ai_result.get("data", {})
 
     # The dispatcher now handles the 'switch' from Discovery to a specific Broker
-    reply = await _dispatch_action(action, data, phone, user_id, context)
+    context = conv.get("context", {})
+    reply = await _dispatch_action(action, data, conv_id, context=context)
 
     # Send the reply
     if reply:
         await messenger.send_text_message(to=phone, body=reply)
 
-    # Record the conversation history
-    history.append(
-        {
-            "role": "user",
-            "content": message_text,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-    history.append(
-        {
-            "role": "assistant",
-            "content": ai_result.get("raw_response", ""),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-
-    db_svc.save_conversation(
-        user_id=user_id, messages=history[-MAX_CONVERSATION_HISTORY:], context=context
-    )
+    # Save History
+    db_svc.save_message(conv_id, "user", message_text)
+    if ai_result.get("raw_response"):
+        db_svc.save_message(conv_id, "assistant", ai_result["raw_response"])
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +175,13 @@ async def process_inbound_logic(
 
 
 async def _dispatch_action(
-    action: str, data: Dict, phone: str, user_id: str, context: Dict
+    action: str,
+    data: Dict,
+    conv_id: str,  # This is the UUID from the 'conversations' table
+    context: Dict,  # Our mutable state dictionary
 ) -> str:
-    """Routes the AI's intent to the specific business logic handler."""
+    """Routes AI intent. Handlers update 'context' in-place."""
+
     if action == "answer":
         return data.get("message", "How can I help you today?")
 
@@ -190,19 +189,22 @@ async def _dispatch_action(
         return await _handle_set_consultant(data, context)
 
     if action == "check_availability":
+        # Pass context so it can see active_consultant_id
         return await _handle_check_availability(data, context)
 
     if action == "create_booking":
-        return await _handle_create_booking(data, user_id, context)
+        # Pass conv_id so the booking knows which chat it belongs to
+        return await _handle_create_booking(data, conv_id, context)
 
     if action == "cancel_booking":
-        return await _handle_cancel_booking_action(data, user_id)
+        return await _handle_cancel_booking_action(data, conv_id)
 
     if action == "reschedule_booking":
-        return await _handle_reschedule_booking_action(data, user_id)
+        # Pass context so we can store the 'reschedule_id'
+        return await _handle_reschedule_booking_action(data, conv_id, context)
 
     if action == "view_bookings":
-        return booking_svc.get_user_bookings_summary(user_id)
+        return booking_svc.get_user_bookings_summary(conv_id)
 
     return data.get("message", "I'm not sure how to do that yet.")
 

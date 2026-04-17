@@ -23,7 +23,7 @@ def test_real_consultant_calendar_access():
     test_id = settings.integration_test_consultant_id
     consultant = db.get_consultant_by_id(test_id)
 
-    logger.info(f"Consultant fields: {consultant}")
+    logger.info(f"Consultant {test_id} fields: {consultant}")
     encrypted_refresh_token = consultant.get("google_refresh_token")
 
     assert encrypted_refresh_token is not None, "Refresh token was not saved to DB!"
