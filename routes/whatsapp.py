@@ -280,6 +280,12 @@ async def _handle_check_availability(data: Dict, context: Dict) -> str:
             "List the times clearly but conversationally. If there are no slots, suggest try another day."
         )
 
+        context["pending_slots"] = slots
+
+        # Persist
+        # This is what allows the NEXT message to understand "the first one"
+        db_svc.update_user_context(context.get("user_phone"), {"pending_slots": slots})
+
         phone = context.get(
             "user_phone"
         )  # Ensure you pass the phone number in context!
@@ -308,7 +314,8 @@ async def _handle_create_booking(data: Dict, user_id: str, context: Dict) -> str
         context.pop("pending_slots", None)
         return booking_svc.build_booking_confirmation(booking)
     except Exception as e:
-        return f"Sorry, I couldn't finish that booking: {str(e)}"
+        logger.error(f"Booking error: {e}")
+        return "Sorry, I couldn't finish that booking."
 
 
 async def _handle_cancel_booking_action(data: Dict, user_id: str) -> str:

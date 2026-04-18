@@ -47,16 +47,16 @@ class LangChainService:
     async def process_message(
         self, user_phone: str, user_message: str, user_context: dict
     ):
-        # uuid5 uses a namespace (we'll use DNS) to hash your phone number into a valid UUID
+        # uuid5 uses a namespace to hash your phone number into a valid UUID
         session_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, user_phone))
 
         # Connection string must be the 'postgresql://' URI from Supabase
         with psycopg.connect(settings.supabase_conn, prepare_threshold=None) as conn:
-            # 1. Initialize History (Automatic Load)
+            #  Initialize History
             history = PostgresChatMessageHistory(
                 "messages", session_uuid, sync_connection=conn
             )
-            # 2. Build Inputs
+            # Build Inputs
             inputs = {
                 "user_message": user_message,
                 "history": history.messages,  # Loads previous turns automatically
@@ -64,12 +64,13 @@ class LangChainService:
                 "timezone": user_context.get("timezone", "UTC"),
                 "active_consultant": user_context.get("active_consultant"),
                 "reschedule_id": user_context.get("reschedule_id"),
+                "pending_slots": user_context.get("pending_slots"),
             }
 
-            # 3. Call Gemini
+            # Call Gemini
             ai_result = await self.chain.ainvoke(inputs)
 
-            # 4. Automatic Save (This populates your new columns!)
+            # Automatic Save
             history.add_user_message(user_message)
             history.add_ai_message(ai_result.get("raw_response", ""))
 
