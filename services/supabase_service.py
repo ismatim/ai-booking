@@ -298,11 +298,17 @@ class SupabaseService:
             self.db.table("conversations")
             .select("*")
             .eq("external_id", external_id)
+            .maybe_single()
             .execute()
         )
 
-        if result.data:
-            return result.data[0]
+        logger.info(
+            f"get_or_create_conversation: external_id={external_id}, chat_type={chat_type}"
+        )
+
+        if getattr(result, "data", None):
+            logger.info(f"Database query result: {result.data}")
+            return result.data
 
         # Create new conversation if it doesn't exist
         new_payload = {
@@ -311,7 +317,7 @@ class SupabaseService:
             "context": {},  # Initial empty context
         }
         res = self.db.table("conversations").insert(new_payload).execute()
-        return res.data[0]
+        return res.data[0] if res.data else None
 
     def get_messages(
         self, conversation_id: str, limit: int = 10
@@ -337,9 +343,12 @@ class SupabaseService:
     def update_user_context(self, identifier: str, updates: dict):
         try:
             if not identifier:
-                print("Error: No identifier (phone) provided to update_user_context")
+                logger.error(
+                    "Error: No identifier (phone) provided to update_user_context"
+                )
                 return None
 
+            logger.info(f"Updating context for {identifier} with updates: {updates}")
             # 1. Fetch existing context safely
             query = (
                 self.db.table("conversations")
@@ -368,7 +377,7 @@ class SupabaseService:
             )
 
         except Exception as e:
-            print(f"FAILED to update context for {identifier}: {e}")
+            logger.error(f"FAILED to update context for {identifier}: {e}")
             return None
 
     # ------------------------------------------------------------------

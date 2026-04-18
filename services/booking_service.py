@@ -1,7 +1,6 @@
 """Booking business logic orchestrating Calendar, Supabase, and WhatsApp."""
 
-import time
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 

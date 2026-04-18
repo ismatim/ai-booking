@@ -102,6 +102,11 @@ async def process_inbound_logic(
     messenger: Any,
     conversation_sid: Optional[str] = None,
 ):
+    """The 'Brain' of the app: processes messages, calls AI, and replies."""
+    phone = normalize_phone_number(phone)
+    if not validate_phone_number(phone):
+        logger.warning(f"Invalid phone number: {phone}")
+        return
 
     external_id = conversation_sid if conversation_sid else phone
     chat_type = "group" if conversation_sid else "individual"
@@ -112,12 +117,6 @@ async def process_inbound_logic(
     # Access state directly from the row
     active_consultant_id = conv.get("active_consultant_id")
     reschedule_id = conv["context"].get("reschedule_id") or None
-
-    """The 'Brain' of the app: processes messages, calls AI, and replies."""
-    phone = normalize_phone_number(phone)
-    if not validate_phone_number(phone):
-        logger.warning(f"Invalid phone number: {phone}")
-        return
 
     # Identity Management
     user = db_svc.get_or_create_user(phone_number=phone, name=sender_name)
@@ -133,14 +132,23 @@ async def process_inbound_logic(
         await messenger.send_text_message(phone, reply)
         return
 
+    db_context = conv.get("context", {})
+
     # Setting up context
+    logger.info("The conversation context stored in db is: " + str(db_context))
+    db_consultant_id = db_context.get("active_consultant_id")
+    db_consultant_name = db_context.get("active_consultant")
+
     user_context = {
+        **db_context,  # Start with any existing conversation context
         "user_name": sender_name,
         "language": user.get("language", "en"),
         "reschedule_id": reschedule_id,
-        "active_consultant": active_consultant,
+        "active_consultant": db_consultant_name or active_consultant,
+        "active_consultant_id": db_consultant_id or active_consultant_id,
         "discovery_mode": active_consultant is None,
         "current_time": datetime.now(timezone.utc).isoformat(),
+        "user_phone": phone,
     }
 
     ai_result = await langchain_svc.process_message(
@@ -157,12 +165,11 @@ async def process_inbound_logic(
     ai_response = ai_result.get("raw_response", "")
 
     # The dispatcher now handles the 'switch' from Discovery to a specific Broker
-    context = conv.get("context", {})
-    reply = await _dispatch_action(action, data, conv_id, context=context)
+    reply = await _dispatch_action(action, data, conv_id, context=user_context)
 
     # Send the reply
     message_to_send = reply or ai_response
-    if reply:
+    if message_to_send:
         await messenger.send_text_message(to=phone, body=message_to_send)
 
 
@@ -178,6 +185,9 @@ async def _dispatch_action(
     context: Dict,  # Our mutable state dictionary
 ) -> str:
     """Routes AI intent. Handlers update 'context' in-place."""
+    logger.info(
+        f"Dispatching action: {action} with data: {data} and context: {context}"
+    )
 
     if action == "answer":
         return data.get("message", "How can I help you today?")
@@ -218,7 +228,9 @@ async def _handle_set_consultant(data: Dict, context: Dict) -> str:
         context["active_consultant_id"] = str(consultant["id"])
 
         #  Save to the Database
-        # This is what stops the "Groundhog Day" loop!
+        logger.info(
+            f"Setting active consultant for {phone} to {consultant['name']} (ID: {consultant['id']})"
+        )
         db_svc.update_user_context(
             phone,
             {
@@ -234,9 +246,14 @@ async def _handle_set_consultant(data: Dict, context: Dict) -> str:
 
 
 async def _handle_check_availability(data: Dict, context: Dict) -> str:
+    logger.info(f"Checking availability with context: {context} and data: {data}")
+
     # Security & Identity Gate
     # Ensure we know which broker we are checking for
     consultant_id = context.get("active_consultant_id")
+    logger.info(
+        f"_handle_check_availability: Active consultant ID from context: {consultant_id}"
+    )
     if not consultant_id:
         return "I'd be happy to check availability! Could you tell me which Consultant you'd like to book with?"
 
@@ -248,8 +265,7 @@ async def _handle_check_availability(data: Dict, context: Dict) -> str:
         #  Parse and Query
         date = datetime.fromisoformat(date_str)
 
-        # Pass the consultant_id to ensure we don't query the wrong calendar
-        # Optionally pass 'service' if Gemini extracted it for duration logic
+        # The booking service returns raw slots
         slots = booking_svc.get_available_slots(date=date, consultant_id=consultant_id)
 
         if not slots:
@@ -257,13 +273,22 @@ async def _handle_check_availability(data: Dict, context: Dict) -> str:
             readable_date = format_readable_date(date)
             return f"I'm sorry, there are no slots available for {readable_date}."
 
-        # 4. State Management
-        # Save slots in context so the User can just say "the first one" or "10am"
-        context["pending_slots"] = slots
+        # We construct a "system message" for the AI with the raw data
+        observation_prompt = (
+            f"I've checked the calendar. Here is the raw data: {slots}. "
+            "Please provide a friendly, natural response to the user. "
+            "List the times clearly but conversationally. If there are no slots, suggest try another day."
+        )
 
-        # 5. Presentation
-        # Ensure your format_slots_for_whatsapp also uses the time helpers!
-        return booking_svc.format_slots_for_whatsapp(slots)
+        phone = context.get(
+            "user_phone"
+        )  # Ensure you pass the phone number in context!
+        # We call Gemini again with the data
+        final_result = await langchain_svc.process_message(
+            phone, observation_prompt, context
+        )
+        message_to_send = final_result.get("raw_response")
+        return message_to_send or slots
 
     except Exception as e:
         logger.error(f"Availability error: {e}")
