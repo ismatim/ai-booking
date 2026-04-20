@@ -29,8 +29,6 @@ langchain_svc = LangChainService()
 booking_svc = BookingService()
 db_svc = SupabaseService()
 
-MAX_CONVERSATION_HISTORY = 20
-
 # ---------------------------------------------------------------------------
 # Endpoints (The Entry Points)
 # ---------------------------------------------------------------------------
@@ -45,7 +43,6 @@ async def verify_meta_webhook(request: Request) -> PlainTextResponse:
     challenge = params.get("hub.challenge")
 
     if mode == "subscribe" and token == settings.whatsapp_verify_token:
-        logger.info("Meta webhook verified successfully")
         return PlainTextResponse(content=challenge or "", status_code=200)
 
     logger.warning("Meta webhook verification failed: token mismatch")
@@ -124,7 +121,6 @@ async def process_inbound_logic(
 
     active_consultant = None
     if active_consultant_id:
-        logger.info(f"User {user_id} has active consultant {active_consultant_id}")
         active_consultant = db_svc.get_consultant(active_consultant_id)
 
     if message_text.strip().upper().startswith("CANCEL "):
@@ -135,7 +131,6 @@ async def process_inbound_logic(
     db_context = conv.get("context", {})
 
     # Setting up context
-    logger.info("The conversation context stored in db is: " + str(db_context))
     db_consultant_id = db_context.get("active_consultant_id")
     db_consultant_name = db_context.get("active_consultant")
 
@@ -149,6 +144,7 @@ async def process_inbound_logic(
         "discovery_mode": active_consultant is None,
         "current_time": datetime.now(timezone.utc).isoformat(),
         "user_phone": phone,
+        "user_id": user_id,
     }
 
     ai_result = await langchain_svc.process_message(
@@ -168,7 +164,13 @@ async def process_inbound_logic(
     reply = await _dispatch_action(action, data, conv_id, context=user_context)
 
     # Send the reply
-    message_to_send = reply or ai_response
+    message_to_send = ""
+    if reply and ai_response:
+        message_to_send = f"{ai_response}\n\n{reply}"
+    else:
+        # Otherwise, we just use whichever one exists
+        message_to_send = reply or ai_response
+
     if message_to_send:
         await messenger.send_text_message(to=phone, body=message_to_send)
 
@@ -201,7 +203,7 @@ async def _dispatch_action(
 
     if action == "create_booking":
         # Pass conv_id so the booking knows which chat it belongs to
-        return await _handle_create_booking(data, conv_id, context)
+        return await _handle_create_booking(data, context)
 
     if action == "cancel_booking":
         return await _handle_cancel_booking_action(data, conv_id)
@@ -228,9 +230,6 @@ async def _handle_set_consultant(data: Dict, context: Dict) -> str:
         context["active_consultant_id"] = str(consultant["id"])
 
         #  Save to the Database
-        logger.info(
-            f"Setting active consultant for {phone} to {consultant['name']} (ID: {consultant['id']})"
-        )
         db_svc.update_user_context(
             phone,
             {
@@ -246,10 +245,7 @@ async def _handle_set_consultant(data: Dict, context: Dict) -> str:
 
 
 async def _handle_check_availability(data: Dict, context: Dict) -> str:
-    logger.info(f"Checking availability with context: {context} and data: {data}")
-
     # Security & Identity Gate
-    # Ensure we know which broker we are checking for
     consultant_id = context.get("active_consultant_id")
     logger.info(
         f"_handle_check_availability: Active consultant ID from context: {consultant_id}"
@@ -297,14 +293,15 @@ async def _handle_check_availability(data: Dict, context: Dict) -> str:
         return message_to_send or slots
 
     except Exception as e:
-        logger.error(f"Availability error: {e}")
+        logger.error(f"_handle_check_availability: error: {e}")
         return "I had trouble checking the calendar. Could you try a different date?"
 
 
-async def _handle_create_booking(data: Dict, user_id: str, context: Dict) -> str:
+async def _handle_create_booking(data: Dict, context: Dict) -> str:
+
     try:
         booking = booking_svc.create_booking(
-            user_id=user_id,
+            user_id=context.get("user_id"),
             consultant_id=data["consultant_id"],
             start_time=datetime.fromisoformat(data["start_time"]),
             end_time=datetime.fromisoformat(data["end_time"]),
@@ -337,6 +334,7 @@ async def _handle_reschedule_booking_action(data: Dict, user_id: str) -> str:
         )
         return f"✅ Rescheduled!\n\n{booking_svc.build_booking_confirmation(updated)}"
     except Exception as e:
+        logger.error(f"handle_create_booking:Rescheduling error: {e}")
         return f"❌ Error: {str(e)}"
 
 

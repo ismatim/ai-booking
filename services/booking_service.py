@@ -193,13 +193,16 @@ class BookingService:
             attendee_emails = (
                 [consultant.get("email")] if consultant.get("email") else None
             )
-            event_id = self.calendar.create_event(
-                calendar_id=cal_id,
+            logger.info(
+                "create_booking: google_refresh_token for consultant: %s",
+                consultant["google_refresh_token"],
+            )
+            event_id = self.calendar.create_event_invitation_event(
+                refresh_token=consultant.get("google_refresh_token"),
                 summary=summary,
                 start_time=start_time,
                 end_time=end_time,
-                description=description,
-                attendee_emails=attendee_emails,
+                consultant_email=attendee_emails,
             )
             if event_id:
                 self.db.set_calendar_event_id(str(booking["id"]), event_id)

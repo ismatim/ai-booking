@@ -65,7 +65,7 @@ class CalendarService:
     # ------------------------------------------------------------------
     # Google Calendar Tokens helpers
     # ------------------------------------------------------------------
-    def get_auth_service(self, encrypted_token: str):
+    def _get_auth_service(self, encrypted_token: str):
         """
         Builds a dedicated Google Calendar service for a specific consultant.
         Does NOT cache to self._service to avoid cross-user identity leaks.
@@ -86,7 +86,7 @@ class CalendarService:
             return build("calendar", "v3", credentials=creds)
 
         except Exception as e:
-            logger.error(f"Failed to build Google service: {e}")
+            logger.error(f"_get_auth_service: Failed to build Google service: {e}")
             raise
 
     # ------------------------------------------------------------------
@@ -190,8 +190,52 @@ class CalendarService:
     # ------------------------------------------------------------------
     # Event management
     # ------------------------------------------------------------------
+    def create_event_invitation_event(
+        self, refresh_token, summary, start_time, end_time, consultant_email
+    ):
+        # 'primary' now refers to the Service Account's own calendar
+        # This will NEVER return a 404 because the bot owns this calendar
+        calendar_id = "primary"
+        service = self._get_auth_service(refresh_token)
 
-    def create_event(
+        event_body = {
+            "summary": summary,
+            "start": {
+                "dateTime": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "timeZone": "UTC",
+            },
+            "end": {
+                "dateTime": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "timeZone": "UTC",
+            },
+            "attendees": [
+                {
+                    "email": consultant_email,
+                    "responseStatus": "accepted",
+                },  # You can try to force-accept
+            ],
+            "conferenceData": {  # Optional: Adds a Google Meet link automatically
+                "createRequest": {
+                    "requestId": "sample123",
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            },
+        }
+
+        logger.info(f"Creating event invitation: {event_body}")
+
+        return (
+            service.events()
+            .insert(
+                calendarId=calendar_id,
+                body=event_body,
+                sendUpdates="all",  # This sends the email invites!
+                conferenceDataVersion=1,
+            )
+            .execute()
+        )
+
+    def create_direct_event(
         self,
         calendar_id: str,
         summary: str,
@@ -215,14 +259,23 @@ class CalendarService:
         """
         event: Dict[str, Any] = {
             "summary": summary,
-            "start": {"dateTime": start_time.isoformat() + "Z", "timeZone": "UTC"},
-            "end": {"dateTime": end_time.isoformat() + "Z", "timeZone": "UTC"},
+            "start": {
+                "dateTime": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "timeZone": "UTC",
+            },
+            "end": {
+                "dateTime": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "timeZone": "UTC",
+            },
         }
         if description:
             event["description"] = description
         if attendee_emails:
-            event["attendees"] = [{"email": e} for e in attendee_emails]
+            event["attendees"] = [
+                {"email": email} for email in attendee_emails if email
+            ]
 
+        logger.info(f"create_event: {event}")
         try:
             service = self._get_service()
             created = (
@@ -231,10 +284,12 @@ class CalendarService:
                 .execute()
             )
             event_id: str = created["id"]
-            logger.info("Created calendar event %s on %s", event_id, calendar_id)
+            logger.info(
+                "create_event: Created calendar event %s on %s", event_id, calendar_id
+            )
             return event_id
         except HttpError as exc:
-            logger.error("Failed to create calendar event: %s", exc)
+            logger.error("create_event: Failed to create calendar event: %s", exc)
             return None
 
     def update_event(
