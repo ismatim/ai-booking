@@ -1,93 +1,36 @@
-# AI Booking – Admin Dashboard
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
-Next.js 14 (App Router) + shadcn/ui admin dashboard for the [AI Booking](../) system.
+## Getting Started
 
-## Pages
-
-| Route | Description |
-|-------|-------------|
-| `/dashboard` | Stats overview + recent bookings |
-| `/bookings` | Filter, search, and cancel bookings |
-| `/consultants` | Add / edit / delete consultants |
-| `/users` | List users and clear conversation history |
-
-## Running Separately (Local Development)
-
-The dashboard is a standalone Next.js app that talks to the FastAPI backend over HTTP.  
-You can start it independently — **no Docker required**.
-
-### 1. Install dependencies
-
-```bash
-cd dashboard
-npm install
-```
-
-### 2. Configure the API URL
-
-```bash
-cp .env.local.example .env.local
-```
-
-The default `.env.local.example` already points to `http://localhost:8000`.  
-Edit `.env.local` if your FastAPI backend runs on a different host or port.
-
-### 3. Start the FastAPI backend
-
-In a separate terminal, from the repo root:
-
-```bash
-pip install -r requirements.txt
-uvicorn main:app --reload
-# → API available at http://localhost:8000
-```
-
-### 4. Start the Next.js dev server
+First, run the development server:
 
 ```bash
 npm run dev
-# → Dashboard available at http://localhost:3000
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.  
-The dashboard auto-reloads as you edit source files.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
----
+You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
-## Running with Docker Compose
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-To run both services together from the repo root:
+## Learn More
 
-```bash
-docker-compose up --build
-```
+To learn more about Next.js, take a look at the following resources:
 
-| Service | URL |
-|---------|-----|
-| FastAPI backend | http://localhost:8000 |
-| Next.js dashboard | http://localhost:3000 |
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
----
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Available Scripts
+## Deploy on Vercel
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server (hot-reload) |
-| `npm run build` | Production build |
-| `npm start` | Start production server (requires build first) |
-| `npm run lint` | Run ESLint |
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Base URL of the FastAPI backend |
-
-## Stack
-
-- [Next.js 14](https://nextjs.org/) – App Router, Server + Client Components
-- [shadcn/ui](https://ui.shadcn.com/) – Component library (New York style)
-- [Tailwind CSS 4](https://tailwindcss.com/) – Styling
-- [TypeScript](https://www.typescriptlang.org/) – Type safety
-- [Lucide React](https://lucide.dev/) – Icons
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
