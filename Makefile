@@ -42,6 +42,9 @@ lint: ## Run Ruff for linting and formatting
 	$(PYTHON) -m ruff check . --fix
 	$(PYTHON) -m ruff format .
 
+ngrok: ## Start ngrok to expose the local server
+	ngrok http 8000
+
 clean: ## Remove python cache and test artifacts
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	rm -rf .pytest_cache
