@@ -1,6 +1,6 @@
 # AI Booking 🤖📱
 
-An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Google Gemini, Meta WhatsApp Business API, and Supabase.
+An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Google Gemini, Meta WhatsApp Business API.
 
 ## Features
 
@@ -8,12 +8,10 @@ An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Goo
 - 📱 **WhatsApp Integration** – Two-way messaging via Meta Business API
 - 🤖 **Google Gemini AI** – Multi-turn conversation with context memory
 - 📅 **Google Calendar Sync** – Real-time consultant availability
-- 💾 **Supabase Database** – Full data persistence (users, bookings, history)
 - ⏰ **Automated Reminders** – WhatsApp reminders 24h and 1h before appointments
 - 🌍 **Multi-language** – Auto-detect and respond in the user's language
 - 👥 **Multi-consultant** – Support multiple consultants with individual calendars
 - 🔧 **Admin API** – Manage consultants, availability, and view statistics
-- 🖥️ **Web Dashboard** – Next.js + shadcn/ui admin dashboard (standalone, port 3000)
 
 ## Prerequisites
 
@@ -21,7 +19,6 @@ An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Goo
 - Docker & Docker Compose (for containerised deployment)
 - [Meta WhatsApp Business API](https://developers.facebook.com/) account
 - [Google Gemini API](https://aistudio.google.com/app/apikey) key
-- [Supabase](https://supabase.com/) project
 - [Google Cloud](https://console.cloud.google.com/) project with Calendar API enabled
 
 ## Quick Start
@@ -66,4 +63,3 @@ The admin dashboard will be available at `http://localhost:3000`.
 See [`dashboard/README.md`](dashboard/README.md) for full dashboard documentation.
 
 Distributed under the MIT License.
-
