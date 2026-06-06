@@ -24,7 +24,7 @@ def get_now_utc() -> datetime:
 
 
 # .isoformat() on a timezone-aware object handles the +00:00 perfectly.
-def get_now_utc_iso():
+def get_now_utc_iso() -> str:
     """
     Returns the current UTC time as an RFC3339 formatted string.
     Best for: Direct use in Google Calendar API parameters (timeMin/timeMax).

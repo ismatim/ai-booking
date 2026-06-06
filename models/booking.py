@@ -53,3 +53,19 @@ class Booking(BaseModel):
     reminder_1h_sent: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+from pydantic import BaseModel, Field
+
+
+class CreateBookingInput(BaseModel):
+    consultant_id: str = Field(
+        description="The unique UUID of the selected consultant."
+    )
+    date: str = Field(
+        description="The target date for the appointment in strict YYYY-MM-DD format."
+    )
+    time_slot: str = Field(
+        description="The chosen time slot string (e.g., '09:00 AM')."
+    )
+    client_name: str = Field(description="The full name of the client.")

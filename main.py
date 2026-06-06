@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
-from routes import admin, bookings, consultants, whatsapp, auth, calendar
+from routes import consultants, whatsapp, auth, calendar
 from services.reminder_service import ReminderService
 from utils.logger import get_logger
 from starlette.middleware.sessions import SessionMiddleware
@@ -67,9 +67,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 app.include_router(whatsapp.router)
-app.include_router(bookings.router)
 app.include_router(consultants.router)
-app.include_router(admin.router)
 app.include_router(auth.router)
 app.include_router(calendar.router)
 

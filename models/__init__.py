@@ -23,9 +23,6 @@ from .consultant import (
 # 4. Booking Models
 from .booking import Booking, BookingCreate, BookingUpdate
 
-# 5. Conversation & AI Models
-# Note: Usually kept in an 'ai.py' or 'history.py' within models/
-from .history import Message, Conversation
 
 # 6. Messaging / Webhook Models
 from .whatsapp import (

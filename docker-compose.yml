@@ -20,6 +20,7 @@ services:
     volumes:
       # Mount credentials file if using file-based Google credentials
       - ./credentials:/app/credentials:ro
+      - ./db.sqlite3:/app/db.sqlite3
 
   dashboard:
     build:
@@ -37,4 +38,3 @@ services:
 networks:
   default:
     name: ai-booking-network
-

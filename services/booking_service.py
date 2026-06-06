@@ -1,14 +1,19 @@
 """Booking business logic orchestrating Calendar, Supabase, and WhatsApp."""
 
-from datetime import datetime, time
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from models import BookingCreate, BookingStatus, BookingUpdate
 from services.calendar_service import CalendarService
-from services.supabase_service import SupabaseService
-from utils.helpers import build_slots_message, slot_to_str
+from utils.helpers import build_slots_message, slot_to_str, parse_time_string
 from utils.logger import get_logger
+from services.database_service import DatabaseService
+
+from config import get_settings
+
+settings = get_settings()
 
 logger = get_logger(__name__)
 
@@ -17,14 +22,14 @@ class BookingService:
     """Orchestrates availability checks, booking creation, and management."""
 
     def __init__(self) -> None:
-        self.db = SupabaseService()
+        self.db = DatabaseService()
         self.calendar = CalendarService()
 
     # ------------------------------------------------------------------
     # Availability
     # ------------------------------------------------------------------
 
-    def get_available_slots(
+    async def get_available_slots(
         self,
         date: datetime,
         consultant_id: Optional[str] = None,
@@ -49,7 +54,7 @@ class BookingService:
             consultant_id,
         )
         if consultant_id:
-            consultant = self.db.get_consultant(consultant_id)
+            consultant = await self.db.get_consultant(consultant_id)
 
             logger.info(
                 f"Consultant found: id={consultant.get('id')}, "
@@ -60,16 +65,16 @@ class BookingService:
             consultants = [consultant] if consultant else []
         else:
             # Fallback only if no ID is present (e.g., general availability check)
-            consultants = self.db.get_all_consultants()
+            consultants = await self.db.get_all_consultants()
 
         if not consultants:
             return []
 
         slots: List[Dict[str, Any]] = []
 
-        for consultant in consultants:
+        for consultant in consultants[:5]:
             cal_id = consultant.get("calendar_id")
-            availability = self.db.get_availability_for_day(
+            availability = await self.db.get_availability_for_day(
                 consultant_id=str(consultant["id"])
             )
 
@@ -87,8 +92,8 @@ class BookingService:
             if not cal_id:
                 continue
             try:
-                work_start = time.fromisoformat(availability["start_time"])
-                work_end = time.fromisoformat(availability["end_time"])
+                work_start = parse_time_string(availability["start_time"])
+                work_end = parse_time_string(availability["end_time"])
                 free = self.calendar.get_free_slots(
                     consultant_id=cal_id,
                     date_to_check=date,  # Correct keyword name
@@ -138,9 +143,9 @@ class BookingService:
     # Booking lifecycle
     # ------------------------------------------------------------------
 
-    def create_booking(
+    async def create_booking(
         self,
-        user_id: str,
+        user_phone_number: str,
         consultant_id: str,
         start_time: datetime,
         end_time: datetime,
@@ -150,7 +155,7 @@ class BookingService:
         """Create a booking, add a Google Calendar event, and return booking data.
 
         Args:
-            user_id: User UUID string.
+            user_phone_number: User WhatsApp phone number string.
             consultant_id: Consultant UUID string.
             start_time: Booking start (UTC).
             end_time: Booking end (UTC).
@@ -163,24 +168,43 @@ class BookingService:
         Raises:
             ValueError: If the user or consultant is not found.
         """
-        user = self.db.get_user_by_id(user_id)
-        consultant = self.db.get_consultant_by_id(consultant_id)
+        user = await self.db.get_user_by_phone(user_phone_number)
+        consultant = await self.db.get_consultant_by_id(consultant_id)
+
         if not user:
-            raise ValueError(f"User {user_id} not found")
+            raise ValueError(f"User with phone number {user_phone_number} not found")
         if not consultant:
             raise ValueError(f"Consultant {consultant_id} not found")
 
+        target_tz = consultant.get("timezone") or settings.default_timezone
+
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=ZoneInfo(target_tz)).astimezone(
+                ZoneInfo("UTC")
+            )
+        else:
+            start_time = start_time.astimezone(ZoneInfo("UTC"))
+
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=ZoneInfo(target_tz)).astimezone(
+                ZoneInfo("UTC")
+            )
+        else:
+            end_time = end_time.astimezone(ZoneInfo("UTC"))
+
+        real_user_id = str(user["id"])
+
         booking_data = BookingCreate(
-            user_id=UUID(user_id),
+            user_id=UUID(real_user_id),
             consultant_id=UUID(consultant_id),
-            start_time=start_time,
-            end_time=end_time,
+            start_time=start_time,  # Se envía en UTC puro
+            end_time=end_time,  # Se envía en UTC puro
             notes=notes,
             service=service,
         )
-        booking = self.db.create_booking(booking_data)
+        # Save the record in UTC
+        booking = await self.db.create_booking(booking_data)
 
-        # Create Google Calendar event
         cal_id = consultant.get("calendar_id")
         if cal_id:
             user_name = user.get("name") or user.get("phone_number", "Customer")
@@ -193,20 +217,23 @@ class BookingService:
             attendee_emails = (
                 [consultant.get("email")] if consultant.get("email") else None
             )
-            logger.info(
-                "create_booking: google_refresh_token for consultant: %s",
-                consultant["google_refresh_token"],
-            )
-            event_id = self.calendar.create_event_invitation_event(
+
+            target_tz = consultant.get("timezone") or settings.default_timezone
+
+            event_response = self.calendar.create_calendar_event(
                 refresh_token=consultant.get("google_refresh_token"),
                 summary=summary,
-                start_time=start_time,
-                end_time=end_time,
+                start_time=start_time,  # UTC
+                end_time=end_time,  # UTC
                 consultant_email=attendee_emails,
+                time_zone=target_tz,
             )
-            if event_id:
-                self.db.set_calendar_event_id(str(booking["id"]), event_id)
-                booking["calendar_event_id"] = event_id
+
+            if event_response and isinstance(event_response, dict):
+                event_id = event_response.get("id")
+                if event_id:
+                    await self.db.set_calendar_event_id(str(booking["id"]), event_id)
+                    booking["calendar_event_id"] = event_id
 
         return booking
 

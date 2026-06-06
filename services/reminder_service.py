@@ -1,16 +1,16 @@
 """Appointment reminder scheduler using APScheduler via Twilio."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import get_settings
-from services.supabase_service import SupabaseService
+from services.database_service import DatabaseService
 from services.meta_service import MetaService  # File remains
 from services.twilio_service import TwilioService  # New primary
-from utils.helpers import slot_to_str
+from utils.helpers import slot_to_str, now_local
 from utils.logger import get_logger
 
 settings = get_settings()
@@ -21,7 +21,7 @@ class ReminderService:
     """Schedules and sends WhatsApp reminders. Currently using Twilio."""
 
     def __init__(self) -> None:
-        self.db = SupabaseService()
+        self.db = DatabaseService()
         self.twilio = TwilioService()
         self.meta = MetaService()  # Kept in code, ready to use
 
@@ -32,17 +32,21 @@ class ReminderService:
 
     def start(self) -> None:
         """Start the background reminder scheduler."""
-        self.scheduler.add_job(
-            self._check_and_send_reminders,
-            trigger=IntervalTrigger(minutes=settings.reminder_check_interval_minutes),
-            id="reminder_check",
-            replace_existing=True,
-            max_instances=1,
-        )
-        self.scheduler.start()
-        logger.info(
-            f"Reminder scheduler started using Twilio (interval: {settings.reminder_check_interval_minutes} min)"
-        )
+        if settings.reminder_start:
+            self.scheduler.add_job(
+                self._check_and_send_reminders,
+                trigger=IntervalTrigger(
+                    minutes=settings.reminder_check_interval_minutes
+                ),
+                id="reminder_check",
+                replace_existing=True,
+                max_instances=1,
+            )
+            logger.info(
+                f"Reminder scheduler started using Twilio (interval: {settings.reminder_check_interval_minutes} min)"
+            )
+
+            self.scheduler.start()
 
     def stop(self) -> None:
         """Stop the background scheduler gracefully."""
@@ -52,10 +56,10 @@ class ReminderService:
 
     async def _check_and_send_reminders(self) -> None:
         """Check upcoming bookings and send due reminders."""
-        now = datetime.now(timezone.utc)
+        now = now_local()
 
-        # RECOMMENDED: Fetch only confirmed bookings that still need reminders
-        upcoming = self.db.get_pending_reminders(from_time=now)
+        # Fetch only confirmed bookings that still need reminders
+        upcoming = await self.db.get_pending_reminders(from_time=now)
 
         for booking in upcoming:
             await self._process_booking_reminders(booking, now)
@@ -66,6 +70,10 @@ class ReminderService:
         """Logic to decide if a 24h or 1h reminder is due."""
         booking_id = str(booking["id"])
         start = datetime.fromisoformat(booking["start_time"])
+
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=now.tzinfo)
+
         hours_until = (start - now).total_seconds() / 3600
 
         # 24-Hour Reminder Logic
@@ -82,11 +90,11 @@ class ReminderService:
 
     async def _send_reminder(self, booking: Dict[str, Any], label: str) -> bool:
         """Executes the send via the primary messenger."""
-        user = self.db.get_user_by_id(str(booking["user_id"]))
+        user = await self.db.get_user_by_id(str(booking["user_id"]))
         if not user:
             return False
 
-        consultant = self.db.get_consultant_by_id(str(booking["consultant_id"]))
+        consultant = await self.db.get_consultant_by_id(str(booking["consultant_id"]))
         consultant_name = consultant["name"] if consultant else "your consultant"
 
         start = datetime.fromisoformat(booking["start_time"])

@@ -1,8 +1,12 @@
+from datetime import datetime, timedelta, timezone
 import os
-import sys
-from langsmith import Client
-from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import sys
+
+from langsmith import Client
+
+from config import get_settings
+from utils.logger import get_logger
 
 # Get the directory 2 levels up
 root_dir = Path(__file__).resolve().parents[1]
@@ -10,9 +14,6 @@ root_dir = Path(__file__).resolve().parents[1]
 # Add it to the path
 sys.path.append(str(root_dir))
 
-from config import get_settings
-
-from utils.logger import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()

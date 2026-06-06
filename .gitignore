@@ -51,3 +51,6 @@ dashboard/.env.local
 
 node_modules/
 docs/
+
+*.db
+*.db-*

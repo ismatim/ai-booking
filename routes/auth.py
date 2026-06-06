@@ -1,7 +1,7 @@
 from google_auth_oauthlib.flow import Flow
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
-from database import get_db
+from services.database_service import DatabaseService
 
 from config import get_settings
 
@@ -10,7 +10,7 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 settings = get_settings()
-db = get_db()
+db = DatabaseService()
 router = APIRouter(prefix="/auth", tags=["Bookings"])
 
 

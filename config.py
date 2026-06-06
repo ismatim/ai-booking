@@ -1,17 +1,32 @@
 """Configuration management for AI Booking application using Pydantic V2."""
 
+import os
+import sys
+
 from functools import lru_cache
 from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from pathlib import Path
+
+# Add the project root to the path so we can import our modules
+project_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(project_root))
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
+    environment: str = os.getenv("APP_ENV", "development")
+    default_timezone: str = "America/Argentina/Buenos_Aires"
+
+    # Database
+    database_filename: Path = project_root / "app.db"
+
     # Application
     app_name: str = "AI Booking"
-    app_version: str = "1.0.0"
+    app_version: str = "0.0.1"
     debug: bool = False
     timezone: str = "UTC"
 
@@ -23,16 +38,9 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str = "ai_booking_verify_token"
     whatsapp_api_version: str = "v18.0"
 
-    # Google Gemini AI
-    gemini_api_key: str
-    gemini_model: str = "gemini-2.5-flash"
-
-    # Supabase
-    supabase_url: str
-    supabase_key: str
-    supabase_password: str
-    # This is the psycopg2 connection string (Port 6543)
-    supabase_conn: str
+    # OpenAI
+    openai_api_key: str
+    openai_model: str
 
     # Google Calendar
     google_calendar_credentials: Optional[str] = None  # JSON string or file path
@@ -46,7 +54,8 @@ class Settings(BaseSettings):
     twilio_auth_token: str
     twilio_whatsapp_number: str
 
-    # Scheduler
+    # Scheduler Service
+    reminder_start: bool = False
     reminder_check_interval_minutes: int = 5
 
     # Cryptography

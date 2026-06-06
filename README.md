@@ -6,7 +6,6 @@ An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Goo
 
 - 💬 **Natural Language Booking** – Understand requests like "I want to book next Tuesday afternoon"
 - 📱 **WhatsApp Integration** – Two-way messaging via Meta Business API
-- 🤖 **Google Gemini AI** – Multi-turn conversation with context memory
 - 📅 **Google Calendar Sync** – Real-time consultant availability
 - ⏰ **Automated Reminders** – WhatsApp reminders 24h and 1h before appointments
 - 🌍 **Multi-language** – Auto-detect and respond in the user's language
@@ -17,9 +16,6 @@ An AI-powered WhatsApp appointment booking system built with Python/FastAPI, Goo
 
 - Python 3.11+
 - Docker & Docker Compose (for containerised deployment)
-- [Meta WhatsApp Business API](https://developers.facebook.com/) account
-- [Google Gemini API](https://aistudio.google.com/app/apikey) key
-- [Google Cloud](https://console.cloud.google.com/) project with Calendar API enabled
 
 ## Quick Start
 
@@ -50,16 +46,6 @@ uvicorn main:app --reload
 The API will be available at `http://localhost:8000`.  
 Interactive docs at `http://localhost:8000/docs`.
 
-**Next.js dashboard (separate terminal):**
-
-```bash
-cd dashboard
-npm install
-cp .env.local.example .env.local   # points to http://localhost:8000 by default
-npm run dev
-```
-
-The admin dashboard will be available at `http://localhost:3000`.  
-See [`dashboard/README.md`](dashboard/README.md) for full dashboard documentation.
+#### License
 
 Distributed under the MIT License.
